@@ -18,11 +18,32 @@ The CLI is `alp`, built from `cmd/alp`.
 alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force]
 alp import <name> <proposal_id> --identity <key.pem> [--at RFC3339]
 alp list
+alp registry subnet <subnet_id> [--host url]
 ```
 
 - `apply` — dry-run on PocketIC, then submit to the live network with `--yes` (type `submit` to confirm), then write state.
 - `import` — adopt an already-submitted proposal into state without submitting (Terraform's `import`).
 - `list` — show each declared proposal as in-sync, drifted, or not-submitted. Here "drift" means the committed config's payload no longer matches the payload recorded in state (an edit since submit); it does not reconcile against on-chain state.
+- `registry subnet` — read-only query of the registry canister for a subnet's current node membership, emitted as a `resources.hcl` fragment (a `subnet` block plus one `node` block per member, sorted by id). Use it to seed or reconcile `resources.hcl` against on-chain state.
+
+For example, the current membership of the Swiss subnet (truncated):
+
+```
+$ alp registry subnet 3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe
+subnet "subnet_3zsyy" {
+  id = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe"
+}
+
+node "node_3wbrf" {
+  id = "3wbrf-zokqb-6euxi-6lxxo-i5tia-4742s-7jfsj-touui-qwzbm-7rmdw-nae"
+}
+
+node "node_au6oc" {
+  id = "au6oc-imc3w-ssdnk-lzy6e-6fgeh-ejwch-bqohf-vj624-k5xfl-77rpz-xqe"
+}
+```
+
+Block labels are derived placeholders (`subnet_<prefix>` / `node_<prefix>`); rename them and add a `label` by hand, since the registry carries no human names.
 
 Global submission settings (`host`, `neuron`, `fetch_root_key`) live in a `provider {}` block in `proposals.hcl`; CLI flags override them. All three subcommands accept `--config` and `--state` to point at non-default file paths.
 

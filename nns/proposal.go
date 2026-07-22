@@ -23,7 +23,6 @@ type ResizeProposal struct {
 	NodeIDsRemove []principal.Principal
 }
 
-// SubmitResize submits the resize proposal as the neuron's controller.
 func (n *NNS) SubmitResize(neuron governance.NeuronId, p ResizeProposal) (uint64, error) {
 	return n.SubmitResizeAs(n.Proposer, neuron, p)
 }
@@ -35,7 +34,6 @@ func (n *NNS) SubmitResizeAs(sender principal.Principal, neuron governance.Neuro
 	return n.SubmitAs(sender, neuron, p)
 }
 
-// SubmitAs submits any Action as an explicit caller on the local network.
 func (n *NNS) SubmitAs(sender principal.Principal, neuron governance.NeuronId, a Action) (uint64, error) {
 	req, err := makeProposalRequest(neuron, a)
 	if err != nil {
@@ -49,7 +47,6 @@ func (n *NNS) SubmitAs(sender principal.Principal, neuron governance.NeuronId, a
 	return proposalIDFromResponse(resp)
 }
 
-// GetProposalInfo reads back the stored proposal.
 func (n *NNS) GetProposalInfo(id uint64) (*governance.ProposalInfo, error) {
 	var out *governance.ProposalInfo
 	if err := n.c.Query(n.inst, n.Proposer, GovernanceID, "get_proposal_info",

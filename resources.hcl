@@ -1,6 +1,4 @@
-# Named resources for the Swiss Subnet, referenced from proposals via HCL
-# expressions: node.<name>.id and subnet.<name>.id. Names must be valid HCL
-# identifiers (letters, digits, underscore). ids resolved from the registry.
+# Named nodes/subnets, referenced from proposals as node.<name>.id / subnet.<name>.id.
 
 subnet "swiss" {
   id    = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe"

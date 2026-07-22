@@ -27,7 +27,7 @@ func BringUp(c *pocketic.Client, inst int, controller principal.Principal) (*NNS
 
 // BringUpWithHotkey is BringUp, additionally registering hotkey on the proposer
 // neuron so proposals can be submitted by the hotkey principal rather than the
-// controller. Pass an empty principal for no hotkey.
+// controller. Empty principal means no hotkey.
 func BringUpWithHotkey(c *pocketic.Client, inst int, controller, hotkey principal.Principal) (*NNS, error) {
 	w, err := wasmPathsFromEnv()
 	if err != nil {

@@ -23,7 +23,6 @@ type Resource struct {
 // module root.
 const DefaultResourcesPath = "resources.hcl"
 
-// resourcesFile is the top-level shape of resources.hcl.
 type resourcesFile struct {
 	Nodes   []Resource `hcl:"node,block"`
 	Subnets []Resource `hcl:"subnet,block"`
@@ -79,7 +78,6 @@ func (r *Resources) EvalContext() *hcl.EvalContext {
 	return ctx
 }
 
-// LabelFor returns the resource label registered for an id, or "".
 func (r *Resources) LabelFor(id string) string {
 	if r == nil {
 		return ""
@@ -98,8 +96,6 @@ func objectsByName(rs []Resource) map[string]cty.Value {
 	return out
 }
 
-// resourcesPathFor returns the resources.hcl path sitting alongside the given
-// config path.
 func resourcesPathFor(configPath string) string {
 	return filepath.Join(filepath.Dir(configPath), DefaultResourcesPath)
 }

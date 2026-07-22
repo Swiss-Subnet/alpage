@@ -88,7 +88,6 @@ func (s *State) Import(spec *Spec, pid uint64, submittedBy, host, at string, neu
 	return nil
 }
 
-// Names returns the recorded proposal names in sorted order.
 func (s *State) Names() []string {
 	out := make([]string, 0, len(s.Proposals))
 	for k := range s.Proposals {

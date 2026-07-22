@@ -16,7 +16,6 @@ type Identity struct {
 	id *identity.Ed25519Identity
 }
 
-// NewIdentity generates a fresh random ed25519 identity.
 func NewIdentity() (*Identity, error) {
 	id, err := identity.NewRandomEd25519Identity()
 	if err != nil {
@@ -25,7 +24,7 @@ func NewIdentity() (*Identity, error) {
 	return &Identity{id: id}, nil
 }
 
-// LoadIdentity loads an ed25519 identity from a PEM file (never committed).
+// LoadIdentity loads an ed25519 identity from a PEM file (a secret, never committed).
 func LoadIdentity(path string) (*Identity, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -38,8 +37,6 @@ func LoadIdentity(path string) (*Identity, error) {
 	return &Identity{id: id}, nil
 }
 
-// Principal returns the self-authenticating principal derived from the key.
 func (i *Identity) Principal() principal.Principal { return i.id.Sender() }
 
-// PEM returns the PEM encoding of the identity (for saving/reuse).
 func (i *Identity) PEM() ([]byte, error) { return i.id.ToPEM() }

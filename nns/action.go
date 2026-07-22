@@ -26,13 +26,10 @@ const (
 type Action interface {
 	Kind() string
 	NnsFunction() int32
-	// Metadata returns the common title/summary/url. Concrete actions embed
-	// Meta, which supplies this method.
 	Metadata() Meta
 	// PayloadBlob is the exact candid-encoded blob nested inside the
 	// ExecuteNnsFunction action. Its SHA-256 is what state pins.
 	PayloadBlob() ([]byte, error)
-	// RenderPayload decodes a stored payload blob for human display.
 	RenderPayload(b *strings.Builder, blob []byte)
 }
 
@@ -44,7 +41,6 @@ type Meta struct {
 	URL     string
 }
 
-// Metadata lets an embedded Meta satisfy the Action interface.
 func (m Meta) Metadata() Meta { return m }
 
 // makeProposalRequest builds the manage_neuron MakeProposal request for any

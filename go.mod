@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/aviate-labs/agent-go v0.9.2
 	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/zclconf/go-cty v1.19.0
 )
 
 require (
@@ -20,7 +21,6 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/zclconf/go-cty v1.19.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect

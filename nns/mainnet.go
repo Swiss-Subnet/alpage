@@ -8,18 +8,13 @@ import (
 	"github.com/swiss-subnet/alpage/gen/governance"
 )
 
-// MainnetHost is the default IC boundary node used for real submissions.
 const MainnetHost = "https://icp-api.io"
 
-// SubmitMainnet submits any Action to a live IC (default mainnet) as a signed
-// ingress message, using agent-go's Agent for the request-id, signing, CBOR
-// envelope, and read_state polling. id is the identity that must be the
-// neuron's controller or a registered hotkey. fetchRootKey must be false for
-// real mainnet and true for local/test networks. It returns the new proposal id.
-//
-// This talks to the real network. Callers are expected to have verified the
-// exact payload locally first (see cmd/submit, which dry-runs before calling
-// this).
+// SubmitMainnet submits an Action to a live IC as a signed ingress message and
+// returns the new proposal id. id must be the neuron's controller or a
+// registered hotkey. fetchRootKey must be false for real mainnet and true only
+// for local/test networks (fetching the root key from an untrusted network
+// would defeat response verification).
 func SubmitMainnet(id *Identity, host string, fetchRootKey bool, neuron governance.NeuronId, action Action) (uint64, error) {
 	if host == "" {
 		host = MainnetHost
@@ -48,8 +43,6 @@ func SubmitMainnet(id *Identity, host string, fetchRootKey bool, neuron governan
 	return proposalIDFromResponse(resp)
 }
 
-// proposalIDFromResponse extracts the new proposal id from a manage_neuron
-// response, or returns the governance error / rejection reason it carries.
 func proposalIDFromResponse(resp governance.ManageNeuronResponse) (uint64, error) {
 	if resp.Command == nil {
 		return 0, fmt.Errorf("manage_neuron: empty command in response")

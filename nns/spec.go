@@ -9,30 +9,25 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
-// Node pairs a node id with an optional human label (provider, location) so the
-// annotations that used to live in Go comments survive in the committed config.
 type Node struct {
 	ID    string `hcl:"id"`
 	Label string `hcl:"label,optional"`
 }
 
-// resizeBody is the nested `resize { ... }` block for a resize proposal.
 type resizeBody struct {
 	SubnetID string `hcl:"subnet_id"`
 	Add      []Node `hcl:"add,block"`
 	Remove   []Node `hcl:"remove,block"`
 }
 
-// deployGuestosBody is the nested `deploy_guestos { ... }` block.
 type deployGuestosBody struct {
 	SubnetID         string `hcl:"subnet_id"`
 	ReplicaVersionID string `hcl:"replica_version_id"`
 }
 
-// Spec is one `proposal "<name>" { ... }` block from proposals.hcl: the common
-// metadata plus a kind-specific nested block, decoded lazily via Remain. It is
-// the single source of truth for the payload; the dry-run, the mainnet submit,
-// and the recorded state all derive from it.
+// Spec is one `proposal "<name>" { ... }` block: common metadata plus a
+// kind-specific nested block. Single source of truth for the payload; dry-run,
+// submit, and state all derive from it.
 type Spec struct {
 	Name    string   `hcl:"name,label"`
 	Kind    string   `hcl:"kind"`
@@ -46,27 +41,23 @@ type Spec struct {
 	evalCtx *hcl.EvalContext
 }
 
-// Meta returns the common proposal metadata.
 func (s *Spec) Meta() Meta { return Meta{Title: s.Title, Summary: s.Summary, URL: s.URL} }
 
-// configFile is the top-level shape of proposals.hcl.
 type configFile struct {
 	Provider  *Provider `hcl:"provider,block"`
 	Proposals []Spec    `hcl:"proposal,block"`
 }
 
-// Provider is the global submission config, like a terraform provider block.
-// FetchRootKey is a pointer so "unset" (derive from host) is distinguishable
-// from an explicit false.
+// Provider is the global submission config. FetchRootKey is a pointer so
+// "unset" (derive from host) is distinguishable from an explicit false.
 type Provider struct {
 	Host         string `hcl:"host,optional"`
 	Neuron       uint64 `hcl:"neuron,optional"`
 	FetchRootKey *bool  `hcl:"fetch_root_key,optional"`
 }
 
-// ShouldFetchRootKey resolves the effective fetch-root-key decision for a host:
-// the explicit provider setting if present, otherwise true for any non-mainnet
-// host (local/test networks need the root key).
+// ShouldFetchRootKey defaults to true for non-mainnet hosts (local/test
+// networks need the root key), unless the provider sets it explicitly.
 func (p Provider) ShouldFetchRootKey(host string) bool {
 	if p.FetchRootKey != nil {
 		return *p.FetchRootKey
@@ -74,20 +65,16 @@ func (p Provider) ShouldFetchRootKey(host string) bool {
 	return host != MainnetHost
 }
 
-// Config is the parsed proposals.hcl: the provider defaults, the named
-// resources, and all proposals.
 type Config struct {
 	Provider  Provider
 	Resources *Resources
 	Proposals []Spec
 }
 
-// DefaultConfigPath is where the proposal blocks live, relative to the module root.
 const DefaultConfigPath = "proposals.hcl"
 
-// LoadConfig parses the provider block and every proposal block from the HCL
-// config file, resolving node/subnet references against the resources file
-// (resources.hcl) sitting alongside it.
+// LoadConfig parses proposals.hcl, resolving node/subnet references against the
+// resources.hcl sitting alongside it.
 func LoadConfig(path string) (*Config, error) {
 	resources, err := loadResources(resourcesPathFor(path))
 	if err != nil {
@@ -117,7 +104,6 @@ func LoadConfig(path string) (*Config, error) {
 	return out, nil
 }
 
-// LoadSpec loads a single named proposal block from the config file.
 func LoadSpec(path, name string) (*Spec, error) {
 	cfg, err := LoadConfig(path)
 	if err != nil {
@@ -131,9 +117,8 @@ func LoadSpec(path, name string) (*Spec, error) {
 	return nil, fmt.Errorf("proposal %q not found in %s", name, path)
 }
 
-// Action decodes the kind-specific nested block into the concrete Action. This
-// is the single dispatch point: to add a proposal type, add a case here and a
-// body struct above.
+// Action decodes the kind-specific nested block into the concrete Action.
+// Single dispatch point: a new proposal type is a case here plus a body struct.
 func (s *Spec) Action() (Action, error) {
 	switch s.Kind {
 	case "resize":
@@ -206,8 +191,8 @@ func decodeNodes(ns []Node) ([]principal.Principal, error) {
 	return out, nil
 }
 
-// Proposal returns the resize proposal for a resize spec (kept for the reproduce
-// command and e2e tests). It errors if the spec is not a resize.
+// Proposal returns the resize proposal for a resize spec (used by the reproduce
+// command and e2e tests), erroring if the spec is not a resize.
 func (s *Spec) Proposal() (ResizeProposal, error) {
 	a, err := s.Action()
 	if err != nil {
@@ -220,10 +205,8 @@ func (s *Spec) Proposal() (ResizeProposal, error) {
 	return r, nil
 }
 
-// PayloadSHA256 returns the SHA-256 of the exact candid payload blob that would
-// be submitted for this spec. It pins the wire payload (not the config
-// formatting), so state can detect whether a resubmission carries the same
-// bytes.
+// PayloadSHA256 hashes the exact candid payload blob, not the config
+// formatting, so state detects whether a resubmission carries the same bytes.
 func (s *Spec) PayloadSHA256() (string, error) {
 	a, err := s.Action()
 	if err != nil {

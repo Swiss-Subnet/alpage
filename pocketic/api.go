@@ -8,10 +8,8 @@ import (
 	"github.com/aviate-labs/agent-go/principal"
 )
 
-// managementCanister is aaaaa-aa: empty raw bytes.
+// managementCanister aaaaa-aa is empty raw bytes.
 var managementCanister = principal.Principal{Raw: []byte{}}
-
-// ---- instance creation ----
 
 type subnetSpec struct {
 	StateConfig       string   `json:"state_config"`       // "New"
@@ -99,7 +97,6 @@ func (c *Client) Tick(inst int) error {
 	return err
 }
 
-// SetTime sets the instance clock to nanosSinceEpoch.
 func (c *Client) SetTime(inst int, nanosSinceEpoch uint64) error {
 	body := struct {
 		Nanos uint64 `json:"nanos_since_epoch"`
@@ -117,8 +114,6 @@ func (c *Client) AutoProgress(inst int) error {
 	_, err := c.do("POST", fmt.Sprintf("/instances/%d/auto_progress", inst), body)
 	return err
 }
-
-// ---- raw canister calls ----
 
 // rawEffectivePrincipal is the externally-tagged enum: "None" | {"CanisterId":b64} | {"SubnetId":b64}.
 type rawEffectivePrincipal struct {
@@ -216,12 +211,10 @@ func unwrapResult(raw []byte) ([]byte, error) {
 	return b64.DecodeString(*res.Ok)
 }
 
-// Query performs a candid-encoded query call and decodes the reply into out.
 func (c *Client) Query(inst int, sender, canister principal.Principal, method string, args, out []any) error {
 	return c.callCandid(inst, sender, canister, method, args, out, false)
 }
 
-// Update performs a candid-encoded update call and decodes the reply into out.
 func (c *Client) Update(inst int, sender, canister principal.Principal, method string, args, out []any) error {
 	return c.callCandid(inst, sender, canister, method, args, out, true)
 }

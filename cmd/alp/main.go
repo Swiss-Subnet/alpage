@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aviate-labs/agent-go/principal"
 	"github.com/swiss-subnet/alpage/gen/governance"
 	"github.com/swiss-subnet/alpage/nns"
 	"github.com/swiss-subnet/alpage/pocketic"
@@ -46,10 +47,12 @@ func run() error {
 		return importCmd(os.Args[2:])
 	case "list":
 		return list(os.Args[2:])
+	case "registry":
+		return registryCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown subcommand %q (try: apply, import, list)", os.Args[1])
+		return fmt.Errorf("unknown subcommand %q (try: apply, import, list, registry)", os.Args[1])
 	}
 }
 
@@ -57,7 +60,8 @@ func usage() error {
 	fmt.Println(`usage:
   alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force]
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
-  alp list`)
+  alp list
+  alp registry subnet <subnet_id> [--host url]`)
 	return nil
 }
 
@@ -208,6 +212,42 @@ func importCmd(argv []string) error {
 		return err
 	}
 	fmt.Printf("Imported %s as proposal %d into %s\n", name, pid, *statePath)
+	return nil
+}
+
+// registryCmd groups read-only registry queries.
+func registryCmd(argv []string) error {
+	if len(argv) < 1 {
+		return fmt.Errorf("registry: usage: registry subnet <subnet_id> [--host url]")
+	}
+	switch argv[0] {
+	case "subnet":
+		return registrySubnet(argv[1:])
+	default:
+		return fmt.Errorf("unknown registry query %q (try: subnet)", argv[0])
+	}
+}
+
+func registrySubnet(argv []string) error {
+	fs := flag.NewFlagSet("registry subnet", flag.ContinueOnError)
+	host := fs.String("host", nns.MainnetHost, "IC host to query")
+	pos, rest := splitArgs(argv, 1)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("registry subnet: subnet id is required")
+	}
+	subnetID, err := principal.Decode(pos[0])
+	if err != nil {
+		return fmt.Errorf("invalid subnet id %q: %w", pos[0], err)
+	}
+	fetchRootKey := *host != nns.MainnetHost
+	nodes, err := nns.FetchSubnetMembership(*host, fetchRootKey, subnetID)
+	if err != nil {
+		return err
+	}
+	fmt.Print(nns.RenderResourcesHCL(subnetID.Encode(), nodes))
 	return nil
 }
 

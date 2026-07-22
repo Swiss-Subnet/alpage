@@ -26,9 +26,9 @@ type Client struct {
 	server *serverProc
 }
 
-// apiResponse models the server's untagged ApiResponse<T>: a 200 carries T
-// directly; a 202 carries {state_label, op_id} (Started); a 409 the same
-// (Busy). We branch on HTTP status rather than shape.
+// Server's untagged ApiResponse<T>: 200 carries T directly; 202 carries
+// {state_label, op_id} (Started); 409 the same (Busy). Branch on HTTP status,
+// not shape.
 type startedOrBusy struct {
 	StateLabel string `json:"state_label"`
 	OpID       string `json:"op_id"`
