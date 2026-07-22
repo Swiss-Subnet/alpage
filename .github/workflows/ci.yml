@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      # Cache the Nix store closure (Go toolchain, PocketIC, IC canisters) keyed
+      # on the flake lock + flake.nix, so runs don't rebuild it every time. The
+      # store and Nix db are root-owned, so restore/save run under sudo.
+      - name: Cache Nix store
+        id: nix-cache
+        uses: actions/cache@v5.0.5
+        with:
+          path: |
+            /nix/store
+            /nix/var/nix/db
+          key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-keys: |
+            nix-${{ runner.os }}-
+
+      - name: Warm devShell
+        run: nix develop --command true
+
+      - name: Build
+        run: nix develop --command go build ./...
+
+      - name: Vet
+        run: nix develop --command go vet ./...
+
+      - name: Test
+        run: nix develop --command go test ./...

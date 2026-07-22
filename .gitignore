@@ -1,0 +1,8 @@
+# Generated candid bindings (regenerate with ./generate.sh from the pinned release)
+/gen/
+# Extracted did files (byproduct of the pinned canisters.tar)
+/did/
+# pocket-ic server runtime files
+*.port
+result
+*.pem
