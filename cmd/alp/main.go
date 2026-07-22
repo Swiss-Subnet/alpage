@@ -47,12 +47,14 @@ func run() error {
 		return importCmd(os.Args[2:])
 	case "list":
 		return list(os.Args[2:])
+	case "status":
+		return status(os.Args[2:])
 	case "registry":
 		return registryCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown subcommand %q (try: apply, import, list, registry)", os.Args[1])
+		return fmt.Errorf("unknown subcommand %q (try: apply, import, list, status, registry)", os.Args[1])
 	}
 }
 
@@ -61,6 +63,7 @@ func usage() error {
   alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force]
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
   alp list
+  alp status [--host url]
   alp registry subnet <subnet_id> [--host url]`)
 	return nil
 }
@@ -280,6 +283,43 @@ func list(argv []string) error {
 		default:
 			fmt.Printf("%-24s  proposal %d  (DRIFT: config payload changed since submit)\n", s.Name, entry.ProposalID)
 		}
+	}
+	return nil
+}
+
+// status reads each recorded proposal back from live governance and reports its
+// actual on-chain status (open/adopted/rejected/executed/failed), closing the
+// loop between what state says we submitted and what became of it. Read-only.
+func status(argv []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
+	statePath := fs.String("state", nns.DefaultStatePath, "path to the consolidated state file")
+	host := fs.String("host", "", "IC host to query (overrides provider block)")
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+	cfg, err := nns.LoadConfig(*config)
+	if err != nil {
+		return err
+	}
+	st, err := nns.LoadState(*statePath)
+	if err != nil {
+		return err
+	}
+	effHost := resolveHost(cfg.Provider, *host)
+	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	for _, s := range cfg.Proposals {
+		entry, ok := st.Proposals[s.Name]
+		if !ok || entry.ProposalID == 0 {
+			fmt.Printf("%-24s  not submitted\n", s.Name)
+			continue
+		}
+		ps, err := nns.FetchProposalStatus(effHost, fetchRootKey, entry.ProposalID)
+		if err != nil {
+			fmt.Printf("%-24s  proposal %d  status query failed: %v\n", s.Name, entry.ProposalID, err)
+			continue
+		}
+		fmt.Println(nns.StatusLine(s.Name, entry, ps))
 	}
 	return nil
 }

@@ -7,11 +7,11 @@
 # this, and bindings move in lockstep.
 #
 # Run inside `nix develop` (needs IC_CANISTERS_DIR) with goic on PATH:
-#   go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.1
+#   go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2
 set -euo pipefail
 
 : "${IC_CANISTERS_DIR:?run inside 'nix develop' so IC_CANISTERS_DIR is set}"
-command -v goic >/dev/null || { echo "goic not found; go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.1"; exit 1; }
+command -v goic >/dev/null || { echo "goic not found; go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2"; exit 1; }
 
 root="$(cd "$(dirname "$0")" && pwd)"
 outroot="$root/gen"
