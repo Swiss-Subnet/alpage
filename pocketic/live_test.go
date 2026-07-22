@@ -8,6 +8,9 @@ import (
 // TestLiveInstance boots the real pinned pocket-ic server and creates an
 // NNS+application instance. Requires POCKET_IC_BIN (set by the nix devShell).
 func TestLiveInstance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PocketIC-backed test in -short mode")
+	}
 	if os.Getenv("POCKET_IC_BIN") == "" {
 		t.Skip("POCKET_IC_BIN not set; run inside nix develop")
 	}

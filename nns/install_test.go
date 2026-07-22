@@ -18,6 +18,9 @@ func testController() principal.Principal {
 }
 
 func TestBringUp(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping PocketIC-backed test in -short mode")
+	}
 	if os.Getenv("POCKET_IC_BIN") == "" {
 		t.Skip("POCKET_IC_BIN not set; run inside nix develop")
 	}

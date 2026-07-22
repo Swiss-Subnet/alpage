@@ -6,10 +6,15 @@ import (
 	"testing"
 )
 
-const testConfig = "../proposals.hcl"
+const testConfig = "testdata/config.hcl"
+
+const (
+	fxSubnet = "67htk-vfkxp-gn33q-baibq"
+	fxNode1  = "5ffj3-jarcq-lruhj-aemtc-sla"
+)
 
 func TestLoadSpecMatchesProposal(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "swiss-subnet-wave1")
+	spec, err := LoadSpec(testConfig, "resize-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -17,16 +22,16 @@ func TestLoadSpecMatchesProposal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("proposal: %v", err)
 	}
-	if len(p.NodeIDsRemove) != 6 {
-		t.Errorf("remove count = %d, want 6", len(p.NodeIDsRemove))
+	if len(p.NodeIDsRemove) != 1 {
+		t.Errorf("remove count = %d, want 1", len(p.NodeIDsRemove))
 	}
-	if p.SubnetID.Encode() != "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe" {
+	if p.SubnetID.Encode() != fxSubnet {
 		t.Errorf("subnet id = %s", p.SubnetID.Encode())
 	}
 }
 
 func TestResourceReferencesResolve(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "swiss-subnet-wave1")
+	spec, err := LoadSpec(testConfig, "resize-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -34,12 +39,12 @@ func TestResourceReferencesResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("proposal: %v", err)
 	}
-	// subnet.swiss.id resolved to the real subnet principal.
-	if got := p.SubnetID.Encode(); got != "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe" {
+	// subnet.test.id resolved to the subnet principal.
+	if got := p.SubnetID.Encode(); got != fxSubnet {
 		t.Errorf("subnet ref resolved to %s", got)
 	}
-	// node.achermann_luzern_1.id resolved to the real node principal.
-	if got := p.NodeIDsRemove[0].Encode(); got != "eihqt-opds6-5r7xa-hr32z-k2xoa-bh4l4-65kld-v7gk3-bplt5-vmsw2-mqe" {
+	// node.n1.id resolved to the node principal.
+	if got := p.NodeIDsRemove[0].Encode(); got != fxNode1 {
 		t.Errorf("node ref resolved to %s", got)
 	}
 }
@@ -47,7 +52,7 @@ func TestResourceReferencesResolve(t *testing.T) {
 // TestInlineAndRefAreEquivalent proves an inline id and a resource reference to
 // the same id produce the identical payload hash.
 func TestInlineAndRefAreEquivalent(t *testing.T) {
-	ref, err := LoadSpec(testConfig, "swiss-subnet-wave1")
+	ref, err := LoadSpec(testConfig, "resize-example")
 	if err != nil {
 		t.Fatalf("load ref spec: %v", err)
 	}
@@ -55,7 +60,7 @@ func TestInlineAndRefAreEquivalent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ref hash: %v", err)
 	}
-	inline, err := LoadSpec("testdata/inline.hcl", "swiss-subnet-wave1")
+	inline, err := LoadSpec("testdata/inline.hcl", "resize-example")
 	if err != nil {
 		t.Fatalf("load inline spec: %v", err)
 	}
@@ -69,7 +74,7 @@ func TestInlineAndRefAreEquivalent(t *testing.T) {
 }
 
 func TestLoadDeployGuestosSpec(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "swiss-subnet-guestos-example")
+	spec, err := LoadSpec(testConfig, "deploy-guestos-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -105,7 +110,7 @@ func TestLoadSpecUnknownName(t *testing.T) {
 // TestPayloadHashStable pins the wire-payload hash. If this changes, the
 // submitted bytes changed and any recorded state is stale.
 func TestPayloadHashStable(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "swiss-subnet-wave1")
+	spec, err := LoadSpec(testConfig, "resize-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -120,11 +125,11 @@ func TestPayloadHashStable(t *testing.T) {
 	if h1 != h2 {
 		t.Errorf("hash not deterministic: %s vs %s", h1, h2)
 	}
-	t.Logf("swiss-subnet-wave1 payload sha256 = %s", h1)
+	t.Logf("resize-example payload sha256 = %s", h1)
 }
 
 func TestStateImport(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "swiss-subnet-wave1")
+	spec, err := LoadSpec(testConfig, "resize-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -137,7 +142,7 @@ func TestStateImport(t *testing.T) {
 	if err := st.Import(spec, 142931, "prin", MainnetHost, "2026-07-17T00:00:00Z", ProposerNeuronID); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	e := st.Proposals["swiss-subnet-wave1"]
+	e := st.Proposals["resize-example"]
 	if e.ProposalID != 142931 || e.PayloadSHA256 != hash || e.SubmittedBy != "prin" || e.Neuron != ProposerNeuronID {
 		t.Errorf("imported entry wrong: %+v", e)
 	}
@@ -161,7 +166,7 @@ func TestStateRoundTrip(t *testing.T) {
 		t.Fatalf("missing state: got %+v, %v; want empty, nil", st, err)
 	}
 	want := Entry{Kind: "resize", ProposalID: 142931, PayloadSHA256: "abc", SubmittedBy: "p", Neuron: 1, Host: "h", SubmittedAt: "2026-07-17T00:00:00Z"}
-	st.Proposals["swiss-subnet-wave1"] = want
+	st.Proposals["resize-example"] = want
 	if err := SaveState(path, st); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -169,8 +174,8 @@ func TestStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if got.Proposals["swiss-subnet-wave1"] != want {
-		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", got.Proposals["swiss-subnet-wave1"], want)
+	if got.Proposals["resize-example"] != want {
+		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", got.Proposals["resize-example"], want)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("state file missing: %v", err)

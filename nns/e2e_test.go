@@ -14,6 +14,9 @@ import (
 // proposer neuron has voting power.
 func startNNS(t *testing.T, hotkey principal.Principal) *NNS {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping PocketIC-backed test in -short mode")
+	}
 	if os.Getenv("POCKET_IC_BIN") == "" {
 		t.Skip("POCKET_IC_BIN not set; run inside nix develop")
 	}

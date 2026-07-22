@@ -49,18 +49,21 @@ func run() error {
 		return list(os.Args[2:])
 	case "status":
 		return status(os.Args[2:])
+	case "plan":
+		return plan(os.Args[2:])
 	case "registry":
 		return registryCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown subcommand %q (try: apply, import, list, status, registry)", os.Args[1])
+		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, registry)", os.Args[1])
 	}
 }
 
 func usage() error {
 	fmt.Println(`usage:
   alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force]
+  alp plan   <name> [--host url]
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
   alp list
   alp status [--host url]
@@ -283,6 +286,47 @@ func list(argv []string) error {
 		default:
 			fmt.Printf("%-24s  proposal %d  (DRIFT: config payload changed since submit)\n", s.Name, entry.ProposalID)
 		}
+	}
+	return nil
+}
+
+// plan reconciles a resize proposal against the subnet's current on-chain
+// membership, warning on no-op adds (already a member) and phantom removes (not
+// a member). Read-only counterpart to apply's PocketIC dry-run: the dry-run
+// checks the payload encodes and executes, plan checks it against reality.
+func plan(argv []string) error {
+	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
+	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
+	host := fs.String("host", "", "IC host to query (overrides provider block)")
+	pos, rest := splitArgs(argv, 1)
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("plan: proposal name is required")
+	}
+	cfg, err := nns.LoadConfig(*config)
+	if err != nil {
+		return err
+	}
+	spec, err := findSpec(cfg, pos[0])
+	if err != nil {
+		return err
+	}
+	resize, err := spec.Proposal()
+	if err != nil {
+		return fmt.Errorf("plan only supports resize proposals: %w", err)
+	}
+	effHost := resolveHost(cfg.Provider, *host)
+	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	current, err := nns.FetchSubnetMembership(effHost, fetchRootKey, resize.SubnetID)
+	if err != nil {
+		return err
+	}
+	p := nns.PlanResize(resize, current)
+	fmt.Print(p.Render())
+	if p.HasWarnings() {
+		return fmt.Errorf("plan has warnings; review before applying")
 	}
 	return nil
 }
