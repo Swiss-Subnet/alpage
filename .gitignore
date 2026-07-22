@@ -6,3 +6,5 @@
 *.port
 result
 *.pem
+# goic installed for binding generation in CI
+/.gobin/

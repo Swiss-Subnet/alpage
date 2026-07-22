@@ -32,8 +32,34 @@ jobs:
           restore-keys: |
             nix-${{ runner.os }}-
 
+      # Go build + module cache, so goic install, go build, and go test reuse
+      # compiled deps across runs instead of re-downloading them.
+      - name: Cache Go
+        uses: actions/cache@v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
       - name: Warm devShell
         run: nix develop --command true
+
+      # gen/ (candid bindings) is not committed; regenerate it from the pinned
+      # release before anything compiles. goic is installed into a known bin dir
+      # and put on PATH so generate.sh finds it regardless of the devShell's
+      # default GOPATH/GOBIN.
+      - name: Generate bindings
+        run: |
+          nix develop --command bash -c '
+            set -euo pipefail
+            export GOBIN="$PWD/.gobin"
+            go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.1
+            export PATH="$GOBIN:$PATH"
+            ./generate.sh
+          '
 
       - name: Build
         run: nix develop --command go build ./...
