@@ -87,11 +87,14 @@
             pkgs.go_1_25
             pkgs.gopls
             pkgs.nixfmt
+            pkgs.protobuf
+            pkgs.protoc-gen-go
             pocketIc
           ];
 
           POCKET_IC_BIN = "${pocketIc}/bin/pocket-ic";
           IC_CANISTERS_DIR = "${icCanisters}";
+          IC_RELEASE_COMMIT = icReleaseCommit;
           GOVERNANCE_WASM = "${icCanisters}/governance-canister_test.wasm.gz";
           REGISTRY_WASM = "${icCanisters}/registry-canister.wasm.gz";
           ROOT_WASM = "${icCanisters}/root-canister.wasm.gz";

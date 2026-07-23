@@ -17,6 +17,9 @@ type NNS struct {
 	inst     int
 	Proposer principal.Principal // controller/sender for proposal submission
 	Hotkey   principal.Principal // optional hotkey on the proposer neuron (empty if none)
+	// Members maps a seeded subnet's textual id to the node principals the seed
+	// generated for it (empty unless brought up with subnet seeds).
+	Members map[string][]principal.Principal
 }
 
 // BringUp installs registry, root, and governance(_test) with the proposer
@@ -29,6 +32,13 @@ func BringUp(c *pocketic.Client, inst int, controller principal.Principal) (*NNS
 // neuron so proposals can be submitted by the hotkey principal rather than the
 // controller. Empty principal means no hotkey.
 func BringUpWithHotkey(c *pocketic.Client, inst int, controller, hotkey principal.Principal) (*NNS, error) {
+	return BringUpWithSubnets(c, inst, controller, hotkey, nil)
+}
+
+// BringUpWithSubnets is BringUpWithHotkey with the local registry pre-seeded so
+// get_subnet resolves the given subnets (membership + replica version). Use it
+// to test the read paths (FetchSubnet*, Preflight) against realistic state.
+func BringUpWithSubnets(c *pocketic.Client, inst int, controller, hotkey principal.Principal, seeds []SubnetSeed) (*NNS, error) {
 	w, err := wasmPathsFromEnv()
 	if err != nil {
 		return nil, err
@@ -43,7 +53,7 @@ func BringUpWithHotkey(c *pocketic.Client, inst int, controller, hotkey principa
 	if err != nil {
 		return nil, fmt.Errorf("encode governance init: %w", err)
 	}
-	regArg, err := minimalRegistryInit()
+	regArg, members, err := minimalRegistryInit(seeds)
 	if err != nil {
 		return nil, fmt.Errorf("encode registry init: %w", err)
 	}
@@ -66,7 +76,7 @@ func BringUpWithHotkey(c *pocketic.Client, inst int, controller, hotkey principa
 			return nil, fmt.Errorf("install %s: %w", u.id.Encode(), err)
 		}
 	}
-	return &NNS{c: c, inst: inst, Proposer: controller, Hotkey: hotkey}, nil
+	return &NNS{c: c, inst: inst, Proposer: controller, Hotkey: hotkey, Members: members}, nil
 }
 
 // registryInitPayload mirrors the registry canister's RegistryCanisterInitPayload.
@@ -95,8 +105,17 @@ type registryMutation struct {
 	Value        []byte `ic:"value" json:"value"`
 }
 
-func minimalRegistryInit() ([]byte, error) {
-	return candid.Marshal([]any{registryInitPayload{Mutations: []registryMutateRequest{}}})
+func minimalRegistryInit(seeds []SubnetSeed) ([]byte, map[string][]principal.Principal, error) {
+	muts, members, err := seedMutations(seeds)
+	if err != nil {
+		return nil, nil, err
+	}
+	reqs := []registryMutateRequest{}
+	if len(muts) > 0 {
+		reqs = append(reqs, registryMutateRequest{Preconditions: []registryPrecondition{}, Mutations: muts})
+	}
+	blob, err := candid.Marshal([]any{registryInitPayload{Mutations: reqs}})
+	return blob, members, err
 }
 
 // ProposerNeuronID is the id of the neuron pre-seeded at genesis for submitting

@@ -118,14 +118,16 @@ func apply(argv []string) error {
 	if err != nil {
 		return err
 	}
-	if prev, ok := st.Proposals[name]; ok && prev.ProposalID != 0 && !*force {
-		same := prev.PayloadSHA256 == hash
-		fmt.Printf("already submitted as %d on %s (payload %s)\n", prev.ProposalID, prev.SubmittedAt, matchWord(same))
-		if same {
-			fmt.Println("nothing to do (pass --force to submit anyway).")
-			return nil
-		}
-		return fmt.Errorf("state records proposal %d but the payload hash changed; refusing without --force", prev.ProposalID)
+	outcome, prev, err := st.ApplyDecision(name, hash, *force)
+	if prev != nil {
+		fmt.Printf("already submitted as %d on %s (payload %s)\n", prev.ProposalID, prev.SubmittedAt, matchWord(prev.PayloadSHA256 == hash))
+	}
+	if err != nil {
+		return err
+	}
+	if outcome == nns.ApplyNothingToDo {
+		fmt.Println("nothing to do (pass --force to submit anyway).")
+		return nil
 	}
 
 	neuron := governance.NeuronId{Id: effNeuron}
@@ -133,6 +135,13 @@ func apply(argv []string) error {
 	fmt.Printf("== Dry run on PocketIC (%s) ==\n", name)
 	if err := dryRun(action); err != nil {
 		return fmt.Errorf("dry run failed, not submitting: %w", err)
+	}
+
+	// Second, independent no-op gate: ApplyDecision above guards against
+	// resubmitting a recorded payload; this guards against submitting one that
+	// is a no-op against live on-chain state. Either can abort.
+	if err := planCheck(action, effHost, fetchRootKey, *force); err != nil {
+		return err
 	}
 
 	fmt.Printf("\nProposal:        %s\n", name)
@@ -150,24 +159,22 @@ func apply(argv []string) error {
 		return nil
 	}
 
-	pid, err := nns.SubmitMainnet(id, effHost, fetchRootKey, neuron, action)
+	sub := nns.MainnetSubmitter{Identity: id, Host: effHost, FetchRootKey: fetchRootKey}
+	args := nns.RecordArgs{
+		Name:        name,
+		Kind:        spec.Kind,
+		Hash:        hash,
+		SubmittedBy: id.Principal().Encode(),
+		Neuron:      effNeuron,
+		Host:        effHost,
+		At:          time.Now().UTC().Format(time.RFC3339),
+	}
+	save := func(s *nns.State) error { return nns.SaveState(*statePath, s) }
+	pid, err := nns.SubmitAndRecord(sub, st, neuron, action, args, save)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("Submitted. Proposal id: %d\n", pid)
-
-	st.Proposals[name] = nns.Entry{
-		Kind:          spec.Kind,
-		ProposalID:    pid,
-		PayloadSHA256: hash,
-		SubmittedBy:   id.Principal().Encode(),
-		Neuron:        effNeuron,
-		Host:          effHost,
-		SubmittedAt:   time.Now().UTC().Format(time.RFC3339),
-	}
-	if err := nns.SaveState(*statePath, st); err != nil {
-		return fmt.Errorf("submitted as %d but failed to write state %s: %w", pid, *statePath, err)
-	}
 	fmt.Printf("Recorded state: %s [%s]\n", *statePath, name)
 	return nil
 }
@@ -290,9 +297,26 @@ func list(argv []string) error {
 	return nil
 }
 
-// plan reconciles a resize proposal against the subnet's current on-chain
-// membership, warning on no-op adds (already a member) and phantom removes (not
-// a member). Read-only counterpart to apply's PocketIC dry-run: the dry-run
+// planCheck runs the action's preflight against live state before submit. A
+// no-op result is refused unless force; warnings print but do not block.
+func planCheck(action nns.Action, host string, fetchRootKey, force bool) error {
+	pf, err := action.Preflight(host, fetchRootKey)
+	if err != nil {
+		return fmt.Errorf("preflight: %w", err)
+	}
+	if pf.Report == "" {
+		return nil
+	}
+	fmt.Print("\n== Preflight vs on-chain state ==\n")
+	fmt.Print(pf.Report)
+	if pf.Level == nns.PreflightNoOp && !force {
+		return fmt.Errorf("proposal is a no-op against current on-chain state; refusing to submit without --force")
+	}
+	return nil
+}
+
+// plan reconciles a proposal against live on-chain state, kind-agnostically via
+// Preflight. Read-only counterpart to apply's PocketIC dry-run: the dry-run
 // checks the payload encodes and executes, plan checks it against reality.
 func plan(argv []string) error {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
@@ -313,22 +337,24 @@ func plan(argv []string) error {
 	if err != nil {
 		return err
 	}
-	resize, err := spec.Proposal()
-	if err != nil {
-		return fmt.Errorf("plan only supports resize proposals: %w", err)
-	}
-	effHost := resolveHost(cfg.Provider, *host)
-	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
-	current, err := nns.FetchSubnetMembership(effHost, fetchRootKey, resize.SubnetID)
+	action, err := spec.Action()
 	if err != nil {
 		return err
 	}
-	p := nns.PlanResize(resize, current)
-	fmt.Print(p.Render())
-	if p.HasWarnings() {
-		return fmt.Errorf("plan has warnings; review before applying")
+	effHost := resolveHost(cfg.Provider, *host)
+	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	pf, err := action.Preflight(effHost, fetchRootKey)
+	if err != nil {
+		return err
 	}
-	return nil
+	if pf.Level == nns.PreflightClean {
+		if pf.Report != "" {
+			fmt.Print(pf.Report)
+		}
+		return nil
+	}
+	fmt.Print(pf.Report)
+	return fmt.Errorf("plan flagged issues; review before applying")
 }
 
 // status reads each recorded proposal back from live governance and reports its

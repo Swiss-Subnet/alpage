@@ -54,6 +54,93 @@ func TestPlanResizePhantomRemove(t *testing.T) {
 	}
 }
 
+func TestPlanAllNoOp(t *testing.T) {
+	// Remove A and B when neither is a member -> every op is a no-op.
+	r := ResizeProposal{NodeIDsRemove: []principal.Principal{nodeA, nodeB}}
+	plan := PlanResize(r, []string{nodeC.Encode()})
+	if !plan.AllNoOp() {
+		t.Errorf("all-phantom plan should be AllNoOp: %+v", plan.Ops)
+	}
+	if !plan.HasWarnings() {
+		t.Error("all-no-op plan must also report warnings")
+	}
+}
+
+func TestPlanNotAllNoOp(t *testing.T) {
+	// Remove A (member, real) and B (not a member, no-op): mixed, not all-no-op.
+	r := ResizeProposal{NodeIDsRemove: []principal.Principal{nodeA, nodeB}}
+	plan := PlanResize(r, []string{nodeA.Encode()})
+	if plan.AllNoOp() {
+		t.Error("a plan with one real op is not AllNoOp")
+	}
+}
+
+func TestPlanEmptyNotAllNoOp(t *testing.T) {
+	if (ResizePlan{}).AllNoOp() {
+		t.Error("an empty plan should not be AllNoOp")
+	}
+}
+
+func TestResizePreflightClean(t *testing.T) {
+	// Add C (new), remove A (present): no warnings -> empty report, Clean.
+	plan := PlanResize(ResizeProposal{
+		NodeIDsAdd:    []principal.Principal{nodeC},
+		NodeIDsRemove: []principal.Principal{nodeA},
+	}, []string{nodeA.Encode()})
+	pf := resizePreflight(plan)
+	if pf.Level != PreflightClean {
+		t.Errorf("clean plan should be Clean, got %v", pf.Level)
+	}
+	if pf.Report != "" {
+		t.Errorf("clean plan should have an empty report, got %q", pf.Report)
+	}
+}
+
+func TestResizePreflightWarn(t *testing.T) {
+	// Remove A (member, real) and B (phantom): mixed -> Warn, not NoOp.
+	plan := PlanResize(ResizeProposal{
+		NodeIDsRemove: []principal.Principal{nodeA, nodeB},
+	}, []string{nodeA.Encode()})
+	pf := resizePreflight(plan)
+	if pf.Level != PreflightWarn {
+		t.Errorf("a mixed plan with one real op must be Warn, got %v", pf.Level)
+	}
+	if pf.Report == "" {
+		t.Error("a warning plan must render a report")
+	}
+}
+
+func TestResizePreflightNoOp(t *testing.T) {
+	// Remove A and B when neither is a member: every op is a no-op -> NoOp.
+	plan := PlanResize(ResizeProposal{
+		NodeIDsRemove: []principal.Principal{nodeA, nodeB},
+	}, []string{nodeC.Encode()})
+	pf := resizePreflight(plan)
+	if pf.Level != PreflightNoOp {
+		t.Errorf("an all-no-op plan must be NoOp, got %v", pf.Level)
+	}
+}
+
+func TestDeployGuestosPlanSameVersionIsNoOp(t *testing.T) {
+	pf := planDeployGuestos("abc123", "abc123")
+	if pf.Level != PreflightNoOp {
+		t.Errorf("deploying the version the subnet already runs is a no-op, got %v", pf.Level)
+	}
+	if pf.Report == "" {
+		t.Error("expected a report explaining the no-op")
+	}
+}
+
+func TestDeployGuestosPlanNewVersionProceeds(t *testing.T) {
+	pf := planDeployGuestos("newver", "abc123")
+	if pf.Level != PreflightClean {
+		t.Errorf("a different target version is a real upgrade, got %v", pf.Level)
+	}
+	if pf.Report == "" {
+		t.Error("expected a report showing current -> target")
+	}
+}
+
 func TestPlanRenderShowsSignsAndWarnings(t *testing.T) {
 	r := ResizeProposal{
 		NodeIDsAdd:    []principal.Principal{nodeB}, // already member -> warn

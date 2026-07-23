@@ -31,6 +31,9 @@ type Action interface {
 	// ExecuteNnsFunction action. Its SHA-256 is what state pins.
 	PayloadBlob() ([]byte, error)
 	RenderPayload(b *strings.Builder, blob []byte)
+	// Preflight reconciles the action against live network state, kind-
+	// specifically. apply and plan call it without knowing the kind.
+	Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error)
 }
 
 // Meta is the common proposal metadata every kind carries. Concrete actions
@@ -101,6 +104,15 @@ func (r ResizeProposal) PayloadBlob() ([]byte, error) {
 	return blob, nil
 }
 
+// Preflight diffs the resize against the subnet's current on-chain membership.
+func (r ResizeProposal) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
+	current, err := FetchSubnetMembership(host, fetchRootKey, r.SubnetID, opts...)
+	if err != nil {
+		return Preflight{}, fmt.Errorf("fetch membership: %w", err)
+	}
+	return resizePreflight(PlanResize(r, current)), nil
+}
+
 func (r ResizeProposal) RenderPayload(b *strings.Builder, blob []byte) {
 	var p registry.ChangeSubnetMembershipPayload
 	if err := candid.Unmarshal(blob, []any{&p}); err != nil {
@@ -140,6 +152,16 @@ func (d DeployGuestosAction) PayloadBlob() ([]byte, error) {
 		return nil, fmt.Errorf("encode DeployGuestosToAllSubnetNodesPayload: %w", err)
 	}
 	return blob, nil
+}
+
+// Preflight checks the target replica version against the subnet's current
+// version in the registry: deploying the version it already runs is a no-op.
+func (d DeployGuestosAction) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
+	current, err := FetchSubnetReplicaVersion(host, fetchRootKey, d.SubnetID, opts...)
+	if err != nil {
+		return Preflight{}, fmt.Errorf("fetch subnet replica version: %w", err)
+	}
+	return planDeployGuestos(d.ReplicaVersionID, current), nil
 }
 
 func (d DeployGuestosAction) RenderPayload(b *strings.Builder, blob []byte) {

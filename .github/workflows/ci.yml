@@ -61,6 +61,11 @@ jobs:
             ./generate.sh
           '
 
+      # registrypb (registry protobuf types for seeding test subnets) is not
+      # committed; regenerate it from the same pinned release before compiling.
+      - name: Generate registry protobuf
+        run: nix develop --command ./generate-proto.sh
+
       - name: Build
         run: nix develop --command go build ./...
 

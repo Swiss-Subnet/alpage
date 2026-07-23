@@ -115,6 +115,58 @@ func (c *Client) AutoProgress(inst int) error {
 	return err
 }
 
+type httpGatewayBackend struct {
+	PocketIcInstance int `json:"PocketIcInstance"`
+}
+
+type httpGatewayConfig struct {
+	IPAddr    *string            `json:"ip_addr"`
+	Port      *uint16            `json:"port"`
+	ForwardTo httpGatewayBackend `json:"forward_to"`
+	Domains   *[]string          `json:"domains"`
+	HTTPS     *struct{}          `json:"https_config"`
+	DomainCP  *string            `json:"domain_custom_provider_local_file"`
+}
+
+type createHTTPGatewayResponse struct {
+	Created *struct {
+		InstanceID int    `json:"instance_id"`
+		Port       uint16 `json:"port"`
+	} `json:"Created"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"Error"`
+}
+
+// MakeLive starts an HTTP gateway forwarding to inst and returns its base URL
+// (http://localhost:<port>). The instance must be progressing (AutoProgress)
+// for the gateway to serve agent queries. Stop it with StopGateway.
+func (c *Client) MakeLive(inst int) (string, error) {
+	raw, err := c.do("POST", "/http_gateway", httpGatewayConfig{
+		ForwardTo: httpGatewayBackend{PocketIcInstance: inst},
+	})
+	if err != nil {
+		return "", err
+	}
+	var resp createHTTPGatewayResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return "", fmt.Errorf("decode CreateHttpGatewayResponse: %w (%s)", err, string(raw))
+	}
+	if resp.Error != nil {
+		return "", fmt.Errorf("make live: %s", resp.Error.Message)
+	}
+	if resp.Created == nil {
+		return "", fmt.Errorf("make live: unexpected response %s", string(raw))
+	}
+	return fmt.Sprintf("http://localhost:%d", resp.Created.Port), nil
+}
+
+// StopGateway stops the HTTP gateway for inst. Best-effort; safe in cleanup.
+func (c *Client) StopGateway(inst int) error {
+	_, err := c.do("POST", fmt.Sprintf("/http_gateway/%d/stop", inst), struct{}{})
+	return err
+}
+
 // rawEffectivePrincipal is the externally-tagged enum: "None" | {"CanisterId":b64} | {"SubnetId":b64}.
 type rawEffectivePrincipal struct {
 	none       bool

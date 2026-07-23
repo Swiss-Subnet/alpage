@@ -88,6 +88,32 @@ func (s *State) Import(spec *Spec, pid uint64, submittedBy, host, at string, neu
 	return nil
 }
 
+// ApplyOutcome is the resubmission guard's verdict for one apply.
+type ApplyOutcome int
+
+const (
+	ApplyProceed     ApplyOutcome = iota // no prior real submission (or --force): submit
+	ApplyNothingToDo                     // already submitted with the identical payload: skip
+)
+
+// ApplyDecision is the resubmission guard: same payload is a no-op, drifted
+// payload errors unless force, a zero proposal id is not a real prior. The
+// returned *Entry is the prior that drove the verdict (nil when none) so
+// callers report from it rather than recomputing the predicate.
+func (s *State) ApplyDecision(name, hash string, force bool) (ApplyOutcome, *Entry, error) {
+	prev, ok := s.Proposals[name]
+	if !ok || prev.ProposalID == 0 {
+		return ApplyProceed, nil, nil
+	}
+	if force {
+		return ApplyProceed, &prev, nil
+	}
+	if prev.PayloadSHA256 == hash {
+		return ApplyNothingToDo, &prev, nil
+	}
+	return ApplyProceed, &prev, fmt.Errorf("state records proposal %d but the payload hash changed; refusing without --force", prev.ProposalID)
+}
+
 func (s *State) Names() []string {
 	out := make([]string, 0, len(s.Proposals))
 	for k := range s.Proposals {

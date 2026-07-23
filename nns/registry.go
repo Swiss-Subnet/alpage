@@ -13,9 +13,19 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// FetchSubnetMembership returns a subnet's node ids as sorted textual
-// principals. Read-only query: no identity, host defaults to mainnet.
-func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Principal) ([]string, error) {
+// FetchOption tunes how the read-only registry fetchers talk to the network.
+type FetchOption func(*fetchOpts)
+
+type fetchOpts struct{ disableQueryVerify bool }
+
+// DisableQueryVerification turns off signed-query verification. Only for tests
+// against a local replica (e.g. PocketIC), whose seeded nodes are not in the
+// certified state tree the agent would consult; never pass it for mainnet.
+func DisableQueryVerification() FetchOption {
+	return func(o *fetchOpts) { o.disableQueryVerify = true }
+}
+
+func newRegistryAgent(host string, fetchRootKey bool, opts []FetchOption) (*registry.RegistryAgent, error) {
 	if host == "" {
 		host = MainnetHost
 	}
@@ -23,10 +33,21 @@ func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Pr
 	if err != nil {
 		return nil, fmt.Errorf("parse host %q: %w", host, err)
 	}
-	a, err := registry.NewRegistryAgent(RegistryID, agent.Config{
-		ClientConfig: []agent.ClientOption{agent.WithHostURL(u)},
-		FetchRootKey: fetchRootKey,
+	var o fetchOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return registry.NewRegistryAgent(RegistryID, agent.Config{
+		ClientConfig:                   []agent.ClientOption{agent.WithHostURL(u)},
+		FetchRootKey:                   fetchRootKey,
+		DisableSignedQueryVerification: o.disableQueryVerify,
 	})
+}
+
+// FetchSubnetMembership returns a subnet's node ids as sorted textual
+// principals. Read-only query: no identity, host defaults to mainnet.
+func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) ([]string, error) {
+	a, err := newRegistryAgent(host, fetchRootKey, opts)
 	if err != nil {
 		return nil, fmt.Errorf("new registry agent: %w", err)
 	}
@@ -41,6 +62,26 @@ func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Pr
 		return nil, fmt.Errorf("get_subnet: empty response")
 	}
 	return decodeMembership(resp.Ok.Membership), nil
+}
+
+// FetchSubnetReplicaVersion returns a subnet's current GuestOS/replica version
+// id from the registry. Read-only.
+func FetchSubnetReplicaVersion(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (string, error) {
+	a, err := newRegistryAgent(host, fetchRootKey, opts)
+	if err != nil {
+		return "", fmt.Errorf("new registry agent: %w", err)
+	}
+	resp, err := a.GetSubnet(registry.GetSubnetRequest{SubnetId: &subnetID})
+	if err != nil {
+		return "", fmt.Errorf("get_subnet: %w", err)
+	}
+	if resp.Err != nil {
+		return "", fmt.Errorf("registry rejected get_subnet: %s", *resp.Err)
+	}
+	if resp.Ok == nil {
+		return "", fmt.Errorf("get_subnet: empty response")
+	}
+	return resp.Ok.ReplicaVersionId, nil
 }
 
 // RenderResourcesHCL renders a subnet and its node membership as a

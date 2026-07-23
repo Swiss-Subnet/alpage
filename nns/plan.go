@@ -67,6 +67,60 @@ func (p ResizePlan) HasWarnings() bool {
 	return false
 }
 
+// AllNoOp reports whether every op in a non-empty plan is a no-op, i.e. the
+// proposal would change nothing on-chain. This is the strongest refuse signal
+// for apply: a resize that does nothing (e.g. one already executed) should not
+// be resubmitted.
+func (p ResizePlan) AllNoOp() bool {
+	if len(p.Ops) == 0 {
+		return false
+	}
+	for _, op := range p.Ops {
+		if !op.Warn {
+			return false
+		}
+	}
+	return true
+}
+
+// PreflightLevel grades a preflight result across all kinds.
+type PreflightLevel int
+
+const (
+	PreflightClean PreflightLevel = iota // nothing to flag; safe to submit
+	PreflightWarn                        // worth review but not blocking
+	PreflightNoOp                        // changes nothing on-chain; refuse without --force
+)
+
+// Preflight is a kind's reconciliation against live state. Report is empty when
+// Clean; non-empty otherwise.
+type Preflight struct {
+	Report string
+	Level  PreflightLevel
+}
+
+// resizePreflight grades a resize plan: no warnings is Clean (empty report),
+// all-no-op is NoOp, any real op alongside a warning is Warn.
+func resizePreflight(p ResizePlan) Preflight {
+	if !p.HasWarnings() {
+		return Preflight{}
+	}
+	level := PreflightWarn
+	if p.AllNoOp() {
+		level = PreflightNoOp
+	}
+	return Preflight{p.Render(), level}
+}
+
+// planDeployGuestos compares a deploy_guestos target version against the
+// subnet's current version. Matching versions change nothing.
+func planDeployGuestos(target, current string) Preflight {
+	if target == current {
+		return Preflight{fmt.Sprintf("subnet already runs replica version %s; deploy is a no-op\n", current), PreflightNoOp}
+	}
+	return Preflight{fmt.Sprintf("replica version %s -> %s\n", current, target), PreflightClean}
+}
+
 func (p ResizePlan) Render() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "subnet %s\n", p.SubnetID)
