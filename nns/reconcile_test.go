@@ -2,7 +2,7 @@ package nns
 
 import "testing"
 
-func res(nodes []Resource, subnets []Resource) *Resources {
+func res(nodes []NodeRes, subnets []Subnet) *Resources {
 	labels := map[string]string{}
 	for _, n := range nodes {
 		labels[n.ID] = n.Label
@@ -24,12 +24,12 @@ func rowFor(rc SubnetReconcile, id string) *ReconcileRow {
 
 func TestReconcileClassifies(t *testing.T) {
 	const sub = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe"
-	nodes := []Resource{
+	nodes := []NodeRes{
 		{Name: "a", ID: "aaaaa-aa", Label: "A", Subnet: sub}, // declared on sub, live -> in sync
 		{Name: "b", ID: "bbbbb-bb", Label: "B", Subnet: sub}, // declared on sub, not live -> missing
 		{Name: "c", ID: "ccccc-cc", Label: "C"},              // declared, no subnet -> ignored for this subnet
 	}
-	subnets := []Resource{{Name: "swiss", ID: sub, Label: "Swiss"}}
+	subnets := []Subnet{{Name: "swiss", ID: sub, Label: "Swiss"}}
 	live := []string{"aaaaa-aa", "ddddd-dd"} // ddddd not declared -> unmanaged
 
 	rc := Reconcile(res(nodes, subnets), sub, live, nil)
@@ -53,11 +53,11 @@ func TestReconcileClassifies(t *testing.T) {
 
 func TestReconcileDeregistered(t *testing.T) {
 	const sub = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe"
-	nodes := []Resource{
-		{Name: "live", ID: "aaaaa-aa", Subnet: sub},
-		{Name: "gone", ID: "bbbbb-bb", Subnet: sub}, // declared on sub, not live, and deregistered on-chain
+	nodes := []NodeRes{
+		{Name: "live", ID: "aaaaa-aa", Label: "", Subnet: sub},
+		{Name: "gone", ID: "bbbbb-bb", Label: "", Subnet: sub}, // declared on sub, not live, and deregistered on-chain
 	}
-	subnets := []Resource{{Name: "swiss", ID: sub}}
+	subnets := []Subnet{{Name: "swiss", ID: sub, Label: ""}}
 	status := map[string]NodeStatus{
 		"aaaaa-aa": {Registered: true},
 		"bbbbb-bb": {Registered: false},
@@ -74,8 +74,8 @@ func TestReconcileDeregistered(t *testing.T) {
 
 func TestReconcileInSyncNoDrift(t *testing.T) {
 	const sub = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe"
-	nodes := []Resource{{Name: "a", ID: "aaaaa-aa", Subnet: sub}}
-	rc := Reconcile(res(nodes, []Resource{{Name: "swiss", ID: sub}}), sub, []string{"aaaaa-aa"}, nil)
+	nodes := []NodeRes{{Name: "a", ID: "aaaaa-aa", Label: "", Subnet: sub}}
+	rc := Reconcile(res(nodes, []Subnet{{Name: "swiss", ID: sub, Label: ""}}), sub, []string{"aaaaa-aa"}, nil)
 	if rc.HasDrift() {
 		t.Errorf("expected no drift, got %+v", rc.Rows)
 	}

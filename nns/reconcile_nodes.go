@@ -54,7 +54,7 @@ func ReconcileOperatorNodes(r *Resources, byOperator map[string][]string) NodeOw
 			owner[n] = opID
 		}
 	}
-	declared := map[string]Resource{} // node id -> block, only those with an operator
+	declared := map[string]NodeRes{} // node id -> block, only those with an operator
 	for _, n := range r.Nodes {
 		if n.Operator != "" {
 			declared[n.ID] = n

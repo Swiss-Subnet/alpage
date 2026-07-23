@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Cache Nix store
+        uses: actions/cache@v5.0.5
+        with:
+          path: |
+            /nix/store
+            /nix/var/nix/db
+          key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-keys: |
+            nix-${{ runner.os }}-
+
+      - name: Cache Go
+        uses: actions/cache@v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+
+      - name: Warm devShell
+        run: nix develop --command true
+
+      # gen/ and registrypb/ are not committed; regenerate from the pinned
+      # release before building, same as CI.
+      - name: Generate bindings
+        run: |
+          nix develop --command bash -c '
+            set -euo pipefail
+            export GOBIN="$PWD/.gobin"
+            go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2
+            export PATH="$GOBIN:$PATH"
+            ./generate.sh
+          '
+
+      - name: Generate registry protobuf
+        run: nix develop --command ./generate-proto.sh
+
+      # Cross-compile alp for each target with the tag injected into main.version.
+      # CGO is off so the binaries are static and cross-compilation needs no C
+      # toolchain. Release artifacts are cross-compiled here (one runner, four
+      # platforms); the flake's packages.alp is the reproducible host build for
+      # `nix build` / `nix run`. Both share the purego tag (see flake.nix) so the
+      # gnark-crypto asm include problem does not bite either path.
+      - name: Build release binaries
+        run: |
+          nix develop --command bash -c '
+            set -euo pipefail
+            TAG="${GITHUB_REF_NAME}"
+            mkdir -p dist
+            for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+              GOOS="${target%/*}"; GOARCH="${target#*/}"
+              out="dist/alp-${TAG}-${GOOS}-${GOARCH}"
+              CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+                go build -tags purego -trimpath -ldflags "-s -w -X main.version=${TAG}" \
+                -o "$out" ./cmd/alp
+              (cd dist && sha256sum "$(basename "$out")" > "$(basename "$out").sha256")
+            done
+          '
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes --verify-tag

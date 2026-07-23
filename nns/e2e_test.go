@@ -2,6 +2,7 @@ package nns
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -69,6 +70,21 @@ func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds
 	return n, c, url
 }
 
+// wave1 loads the committed swiss-subnet-wave1 resize proposal. Tests run from
+// nns/, so proposals.hcl sits one directory up.
+func wave1(t *testing.T) ResizeProposal {
+	t.Helper()
+	spec, err := LoadSpec(filepath.Join("..", DefaultConfigPath), "swiss-subnet-wave1")
+	if err != nil {
+		t.Fatalf("load wave1 spec: %v", err)
+	}
+	p, err := spec.Proposal()
+	if err != nil {
+		t.Fatalf("decode wave1 spec: %v", err)
+	}
+	return p
+}
+
 func assertResizeRendered(t *testing.T, rendered string) {
 	t.Helper()
 	for _, want := range []string{
@@ -89,7 +105,7 @@ func TestSwissSubnetWave1(t *testing.T) {
 	n := startNNS(t, principal.Principal{})
 	neuron := n.ProposerNeuron()
 
-	pid, err := n.SubmitResize(neuron, SwissSubnetWave1)
+	pid, err := n.SubmitResize(neuron, wave1(t))
 	if err != nil {
 		t.Fatalf("submit resize: %v", err)
 	}
@@ -227,11 +243,11 @@ func TestReconcileAgainstSeededSubnet(t *testing.T) {
 
 	sub := subnetX.Encode()
 	r := res(
-		[]Resource{
+		[]NodeRes{
 			{Name: "declared_live", ID: members[0].Encode(), Subnet: sub},
 			{Name: "declared_gone", ID: nodeC.Encode(), Subnet: sub},
 		},
-		[]Resource{{Name: "x", ID: sub, Label: "Subnet X"}},
+		[]Subnet{{Name: "x", ID: sub, Label: "Subnet X"}},
 	)
 	rc := Reconcile(r, sub, live, nil)
 
@@ -274,12 +290,12 @@ func TestReconcileProvidersAgainstSeededRegistry(t *testing.T) {
 	}
 
 	r := &Resources{
-		Providers: []Resource{{Name: "p", ID: provID}},
-		DCs:       []Resource{{Name: "vd1", ID: "vd1", Region: "Europe,CH,Vaud"}},
-		Operators: []Resource{
-			{Name: "good", ID: opID, Provider: provID, Dc: "vd1"},
-			{Name: "bad_dc", ID: opID, Provider: provID, Dc: "so1"},
-			{Name: "phantom", ID: "aaaaa-aa", Provider: provID, Dc: "vd1"},
+		Providers: []NodeProvider{{Name: "p", ID: provID, Label: ""}},
+		DCs:       []DataCenter{{Name: "vd1", ID: "vd1", Label: "", Region: "Europe,CH,Vaud"}},
+		Operators: []NodeOperator{
+			{Name: "good", ID: opID, Label: "", Provider: provID, Dc: "vd1"},
+			{Name: "bad_dc", ID: opID, Label: "", Provider: provID, Dc: "so1"},
+			{Name: "phantom", ID: "aaaaa-aa", Label: "", Provider: provID, Dc: "vd1"},
 		},
 		labels: map[string]string{},
 	}
@@ -304,7 +320,7 @@ func TestSubmitViaHotkey(t *testing.T) {
 	}
 
 	// Submit as the hotkey principal, not the controller.
-	pid, err := n.SubmitResizeAs(n.Hotkey, n.ProposerNeuron(), SwissSubnetWave1)
+	pid, err := n.SubmitResizeAs(n.Hotkey, n.ProposerNeuron(), wave1(t))
 	if err != nil {
 		t.Fatalf("submit via hotkey: %v", err)
 	}

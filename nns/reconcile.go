@@ -52,7 +52,7 @@ func Reconcile(r *Resources, subnetID string, liveMembers []string, nodeStatus m
 	for _, id := range liveMembers {
 		live[id] = true
 	}
-	declared := map[string]Resource{}
+	declared := map[string]NodeRes{}
 	for _, n := range r.Nodes {
 		if n.Subnet == subnetID {
 			declared[n.ID] = n

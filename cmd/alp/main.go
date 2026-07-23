@@ -17,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -28,6 +29,21 @@ import (
 
 // ProposerNeuronID is the Swiss Subnet's proposer neuron on mainnet.
 const ProposerNeuronID uint64 = 12838523358913392196
+
+// version is the build version, injected at release time via
+// -ldflags "-X main.version=<tag>". "dev" for plain go build/run; a go-installed
+// build falls back to the module version from the embedded build info.
+var version = "dev"
+
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return version
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -55,10 +71,13 @@ func run() error {
 		return reconcile(os.Args[2:])
 	case "registry":
 		return registryCmd(os.Args[2:])
+	case "version", "--version", "-v":
+		fmt.Println(buildVersion())
+		return nil
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, reconcile, registry)", os.Args[1])
+		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, reconcile, registry, version)", os.Args[1])
 	}
 }
 
@@ -70,7 +89,8 @@ func usage() error {
   alp list
   alp status [--host url]
   alp reconcile [--host url]
-  alp registry subnet <subnet_id> [--host url]`)
+  alp registry subnet <subnet_id> [--host url]
+  alp version`)
 	return nil
 }
 

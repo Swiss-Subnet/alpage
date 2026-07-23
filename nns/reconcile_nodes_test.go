@@ -13,14 +13,14 @@ func nodeRowFor(nr NodeOwnershipReconcile, id string) *NodeOwnershipRow {
 
 func TestReconcileOperatorNodes(t *testing.T) {
 	r := &Resources{
-		Operators: []Resource{
-			{Name: "op_a", ID: "op-a"},
-			{Name: "op_b", ID: "op-b"},
+		Operators: []NodeOperator{
+			{Name: "op_a", ID: "op-a", Label: ""},
+			{Name: "op_b", ID: "op-b", Label: ""},
 		},
-		Nodes: []Resource{
-			{Name: "n_ok", ID: "n-ok", Operator: "op-a"},       // op-a owns it: ok
-			{Name: "n_moved", ID: "n-moved", Operator: "op-a"}, // op-b owns it now: mismatch
-			{Name: "n_gone", ID: "n-gone", Operator: "op-a"},   // no operator owns it: gone
+		Nodes: []NodeRes{
+			{Name: "n_ok", ID: "n-ok", Label: "", Operator: "op-a"},       // op-a owns it: ok
+			{Name: "n_moved", ID: "n-moved", Label: "", Operator: "op-a"}, // op-b owns it now: mismatch
+			{Name: "n_gone", ID: "n-gone", Label: "", Operator: "op-a"},   // no operator owns it: gone
 		},
 		labels: map[string]string{},
 	}
@@ -51,8 +51,8 @@ func TestReconcileOperatorNodes(t *testing.T) {
 
 func TestReconcileOperatorNodesClean(t *testing.T) {
 	r := &Resources{
-		Operators: []Resource{{Name: "op_a", ID: "op-a"}},
-		Nodes:     []Resource{{Name: "n", ID: "n-1", Operator: "op-a"}},
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes:     []NodeRes{{Name: "n", ID: "n-1", Label: "", Operator: "op-a"}},
 		labels:    map[string]string{},
 	}
 	byOperator := map[string][]string{"op-a": {"n-1"}}
@@ -65,8 +65,8 @@ func TestReconcileOperatorNodesClean(t *testing.T) {
 // A node that declares no operator is not diffed against ownership at all.
 func TestReconcileOperatorNodesSkipsUndeclaredOperator(t *testing.T) {
 	r := &Resources{
-		Operators: []Resource{{Name: "op_a", ID: "op-a"}},
-		Nodes:     []Resource{{Name: "n", ID: "n-1"}}, // no Operator field
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes:     []NodeRes{{Name: "n", ID: "n-1", Label: ""}}, // no Operator field
 		labels:    map[string]string{},
 	}
 	byOperator := map[string][]string{"op-a": {"n-1"}}

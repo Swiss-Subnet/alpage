@@ -65,7 +65,7 @@ func ReconcileProviders(r *Resources, byProvider map[string][]ProviderOperator) 
 	return pr
 }
 
-func classifyOperator(op Resource, owned []ProviderOperator, dcRegion map[string]string) (OperatorStatus, string) {
+func classifyOperator(op NodeOperator, owned []ProviderOperator, dcRegion map[string]string) (OperatorStatus, string) {
 	for _, o := range owned {
 		if o.OperatorID != op.ID {
 			continue

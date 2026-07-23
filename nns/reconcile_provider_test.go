@@ -13,18 +13,18 @@ func opRowFor(pr ProviderReconcile, opID string) *OperatorRow {
 
 func TestReconcileProviders(t *testing.T) {
 	r := &Resources{
-		Providers: []Resource{
+		Providers: []NodeProvider{
 			{Name: "alpinedc", ID: "prov-a", Label: "AlpineDC"},
 			{Name: "ghost", ID: "prov-x", Label: "Ghost"},
 		},
-		DCs: []Resource{
-			{Name: "vd1", ID: "vd1", Region: "Europe,LI,Vaduz"},
+		DCs: []DataCenter{
+			{Name: "vd1", ID: "vd1", Label: "", Region: "Europe,LI,Vaduz"},
 		},
-		Operators: []Resource{
-			{Name: "a_ok", ID: "op-ok", Provider: "prov-a", Dc: "vd1"},   // matches canister
-			{Name: "a_dc", ID: "op-dc", Provider: "prov-a", Dc: "so1"},   // dc mismatch
-			{Name: "a_unk", ID: "op-unk", Provider: "prov-a", Dc: "vd1"}, // provider does not own it
-			{Name: "x_op", ID: "op-x", Provider: "prov-x", Dc: "vd1"},    // provider absent
+		Operators: []NodeOperator{
+			{Name: "a_ok", ID: "op-ok", Label: "", Provider: "prov-a", Dc: "vd1"},   // matches canister
+			{Name: "a_dc", ID: "op-dc", Label: "", Provider: "prov-a", Dc: "so1"},   // dc mismatch
+			{Name: "a_unk", ID: "op-unk", Label: "", Provider: "prov-a", Dc: "vd1"}, // provider does not own it
+			{Name: "x_op", ID: "op-x", Label: "", Provider: "prov-x", Dc: "vd1"},    // provider absent
 		},
 		labels: map[string]string{},
 	}
@@ -58,8 +58,8 @@ func TestReconcileProviders(t *testing.T) {
 
 func TestReconcileProvidersClean(t *testing.T) {
 	r := &Resources{
-		Providers: []Resource{{Name: "p", ID: "prov"}},
-		Operators: []Resource{{Name: "o", ID: "op", Provider: "prov", Dc: "vd1"}},
+		Providers: []NodeProvider{{Name: "p", ID: "prov", Label: ""}},
+		Operators: []NodeOperator{{Name: "o", ID: "op", Label: "", Provider: "prov", Dc: "vd1"}},
 		labels:    map[string]string{},
 	}
 	byProvider := map[string][]ProviderOperator{

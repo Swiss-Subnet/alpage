@@ -8,7 +8,7 @@ The CLI is `alp`, built from `cmd/alp`.
 
 ## How it works
 
-- **Config** you declare: `proposals.hcl` (one `proposal "<name>"` block per change) and `resources.hcl` (reusable `node` / `subnet` resources, referenced as `node.<name>.id` / `subnet.<name>.id`).
+- **Config** you declare: `proposals.hcl` (one `proposal "<name>"` block per change) and `resources.hcl` (reusable `node` / `subnet` resources, referenced as `node.<name>.id` / `subnet.<name>.id`). Every block and field is documented in [docs/config.md](docs/config.md), generated from the struct tags via `go generate ./nns`. Split resource files: any `resources/*.hcl` beside `resources.hcl` is merged in, so cross-file references resolve.
 - **State** the tool records: `state.json`, a single file keyed by proposal name, holding the resulting `proposal_id`, the submitter principal, neuron, host, payload hash, and timestamp.
 - **Verification**: `apply` always dry-runs the exact payload on a local PocketIC NNS first. It refuses to resubmit a proposal already recorded in state unless `--force`.
 
@@ -74,6 +74,23 @@ Golden dry-run tests regenerate with `-update`:
 ```
 nix develop --command go test ./nns -run TestDryRunGolden -update
 ```
+
+Build the CLI reproducibly with the flake (version taken from the git rev/tag, injected into `alp version`):
+
+```
+nix build .#alp && ./result/bin/alp version
+```
+
+## Releases
+
+Tags matching `v*` trigger `.github/workflows/release.yml`, which cross-compiles `alp` for linux/darwin on amd64/arm64 with the tag injected into `main.version`, and attaches the binaries (plus `.sha256` sums) to a GitHub release. To cut one:
+
+```
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+`alp version` on any build reports its tag; a plain `go build` reports `dev` (or the module pseudo-version for a `go install`ed build).
 
 ## License
 

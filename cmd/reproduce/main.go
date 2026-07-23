@@ -43,7 +43,15 @@ func run() error {
 		return err
 	}
 
-	pid, err := n.SubmitResize(n.ProposerNeuron(), nns.SwissSubnetWave1)
+	spec, err := nns.LoadSpec(nns.DefaultConfigPath, "swiss-subnet-wave1")
+	if err != nil {
+		return err
+	}
+	wave1, err := spec.Proposal()
+	if err != nil {
+		return err
+	}
+	pid, err := n.SubmitResize(n.ProposerNeuron(), wave1)
 	if err != nil {
 		return err
 	}

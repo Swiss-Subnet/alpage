@@ -12,37 +12,91 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// Resource is a named registry entity referenced from other blocks via an HCL
-// expression like node.<name>.id / subnet.<name>.id / node_provider.<name>.id.
-// The struct is shared across kinds; only the fields relevant to a kind are set.
-type Resource struct {
+// namedResource is implemented by every resource kind, so the eval context and
+// label map can be built without knowing the concrete kind. gohcl does not
+// flatten embedded structs, so each kind repeats name/id/label rather than
+// sharing a base.
+type namedResource interface {
+	name() string
+	id() string
+	label() string
+}
+
+// Subnet is referenced from proposals and nodes as subnet.<name>.id.
+type Subnet struct {
 	Name  string `hcl:"name,label"`
 	ID    string `hcl:"id"`
 	Label string `hcl:"label,optional"`
-	// Subnet, on a node, is the id of the subnet it belongs to (typically
-	// subnet.<name>.id). Empty means unassigned; reconcile only diffs nodes
-	// that declare the subnet under test.
-	Subnet string `hcl:"subnet,optional"`
-	// Operator, on a node, is the id of its node operator (node_operator.<n>.id).
-	Operator string `hcl:"operator,optional"`
-	// Provider, on a node_operator, is the id of its node provider.
-	Provider string `hcl:"provider,optional"`
-	// Dc, on a node_operator, is the id of its data center (data_center.<n>.id).
-	Dc string `hcl:"dc,optional"`
-	// Region, on a data_center, is its registry region string.
+}
+
+// NodeProvider is referenced from node_operator as node_provider.<name>.id.
+type NodeProvider struct {
+	Name  string `hcl:"name,label"`
+	ID    string `hcl:"id"`
+	Label string `hcl:"label,optional"`
+}
+
+// DataCenter is referenced from node_operator as data_center.<name>.id.
+type DataCenter struct {
+	Name  string `hcl:"name,label"`
+	ID    string `hcl:"id"`
+	Label string `hcl:"label,optional"`
+	// Region is the registry region string; reconcile compares it against the
+	// on-chain dc region. Not exposed in the eval context (no .region refs).
 	Region string `hcl:"region,optional"`
 }
+
+// NodeOperator is referenced from node as node_operator.<name>.id.
+type NodeOperator struct {
+	Name  string `hcl:"name,label"`
+	ID    string `hcl:"id"`
+	Label string `hcl:"label,optional"`
+	// Provider is the id of its node provider.
+	Provider string `hcl:"provider,optional"`
+	// Dc is the id of its data center (data_center.<name>.id).
+	Dc string `hcl:"dc,optional"`
+}
+
+// NodeRes is a node resource, referenced from proposals as node.<name>.id.
+// (Named NodeRes to avoid colliding with the proposal-payload Node in spec.go.)
+type NodeRes struct {
+	Name  string `hcl:"name,label"`
+	ID    string `hcl:"id"`
+	Label string `hcl:"label,optional"`
+	// Subnet is the id of the subnet it belongs to (typically subnet.<name>.id).
+	// Empty means unassigned; reconcile only diffs nodes that declare the subnet
+	// under test.
+	Subnet string `hcl:"subnet,optional"`
+	// Operator is the id of its node operator (node_operator.<name>.id).
+	Operator string `hcl:"operator,optional"`
+}
+
+func (s Subnet) name() string        { return s.Name }
+func (s Subnet) id() string          { return s.ID }
+func (s Subnet) label() string       { return s.Label }
+func (p NodeProvider) name() string  { return p.Name }
+func (p NodeProvider) id() string    { return p.ID }
+func (p NodeProvider) label() string { return p.Label }
+func (d DataCenter) name() string    { return d.Name }
+func (d DataCenter) id() string      { return d.ID }
+func (d DataCenter) label() string   { return d.Label }
+func (o NodeOperator) name() string  { return o.Name }
+func (o NodeOperator) id() string    { return o.ID }
+func (o NodeOperator) label() string { return o.Label }
+func (n NodeRes) name() string       { return n.Name }
+func (n NodeRes) id() string         { return n.ID }
+func (n NodeRes) label() string      { return n.Label }
 
 // DefaultResourcesPath is where node/subnet resources live, relative to the
 // module root.
 const DefaultResourcesPath = "resources.hcl"
 
 type resourcesFile struct {
-	Nodes     []Resource `hcl:"node,block"`
-	Subnets   []Resource `hcl:"subnet,block"`
-	Providers []Resource `hcl:"node_provider,block"`
-	Operators []Resource `hcl:"node_operator,block"`
-	DCs       []Resource `hcl:"data_center,block"`
+	Nodes     []NodeRes      `hcl:"node,block"`
+	Subnets   []Subnet       `hcl:"subnet,block"`
+	Providers []NodeProvider `hcl:"node_provider,block"`
+	Operators []NodeOperator `hcl:"node_operator,block"`
+	DCs       []DataCenter   `hcl:"data_center,block"`
 }
 
 // leafBlocks is the first-pass shape: it reads the reference-free blocks
@@ -51,10 +105,10 @@ type resourcesFile struct {
 // their cross-references are not evaluated before the context resolving them
 // exists.
 type leafBlocks struct {
-	Subnets   []Resource `hcl:"subnet,block"`
-	Providers []Resource `hcl:"node_provider,block"`
-	DCs       []Resource `hcl:"data_center,block"`
-	Rest      hcl.Body   `hcl:",remain"`
+	Subnets   []Subnet       `hcl:"subnet,block"`
+	Providers []NodeProvider `hcl:"node_provider,block"`
+	DCs       []DataCenter   `hcl:"data_center,block"`
+	Rest      hcl.Body       `hcl:",remain"`
 }
 
 // operatorBlocks is the second-pass shape: it reads node_operator blocks (which
@@ -62,18 +116,18 @@ type leafBlocks struct {
 // a node's operator/subnet references are not evaluated before node_operator
 // exists as a variable.
 type operatorBlocks struct {
-	Operators []Resource `hcl:"node_operator,block"`
-	Rest      hcl.Body   `hcl:",remain"`
+	Operators []NodeOperator `hcl:"node_operator,block"`
+	Rest      hcl.Body       `hcl:",remain"`
 }
 
 // Resources holds all named resources plus a reverse label lookup by id, used
 // to render a resource's own label when a referencing block omits one.
 type Resources struct {
-	Nodes     []Resource
-	Subnets   []Resource
-	Providers []Resource
-	Operators []Resource
-	DCs       []Resource
+	Nodes     []NodeRes
+	Subnets   []Subnet
+	Providers []NodeProvider
+	Operators []NodeOperator
+	DCs       []DataCenter
 	labels    map[string]string // id -> label
 }
 
@@ -125,26 +179,32 @@ func loadResources(path string) (*Resources, error) {
 		return nil, fmt.Errorf("decode resources: %s", diags.Error())
 	}
 	labels := map[string]string{}
-	for _, group := range [][]Resource{rf.Nodes, rf.Subnets, rf.Providers, rf.Operators, rf.DCs} {
-		for _, r := range group {
-			labels[r.ID] = r.Label
-		}
-	}
+	addLabels(labels, rf.Nodes)
+	addLabels(labels, rf.Subnets)
+	addLabels(labels, rf.Providers)
+	addLabels(labels, rf.Operators)
+	addLabels(labels, rf.DCs)
 	return &Resources{
 		Nodes: rf.Nodes, Subnets: rf.Subnets, Providers: rf.Providers,
 		Operators: rf.Operators, DCs: rf.DCs, labels: labels,
 	}, nil
 }
 
-func setVar(ctx *hcl.EvalContext, name string, rs []Resource) {
+func setVar[T namedResource](ctx *hcl.EvalContext, name string, rs []T) {
 	if v := objectsByName(rs); len(v) > 0 {
 		ctx.Variables[name] = cty.ObjectVal(v)
 	}
 }
 
+func addLabels[T namedResource](labels map[string]string, rs []T) {
+	for _, r := range rs {
+		labels[r.id()] = r.label()
+	}
+}
+
 // EvalContext exposes the resource variables so proposal expressions like
-// node.foo.id and subnet.bar.id resolve. Each resource is an object with id,
-// label and region attributes.
+// node.foo.id and subnet.bar.id resolve. Each resource is an object with id
+// and label attributes.
 func (r *Resources) EvalContext() *hcl.EvalContext {
 	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{}}
 	if r == nil {
@@ -165,13 +225,12 @@ func (r *Resources) LabelFor(id string) string {
 	return r.labels[id]
 }
 
-func objectsByName(rs []Resource) map[string]cty.Value {
+func objectsByName[T namedResource](rs []T) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(rs))
 	for _, r := range rs {
-		out[r.Name] = cty.ObjectVal(map[string]cty.Value{
-			"id":     cty.StringVal(r.ID),
-			"label":  cty.StringVal(r.Label),
-			"region": cty.StringVal(r.Region),
+		out[r.name()] = cty.ObjectVal(map[string]cty.Value{
+			"id":    cty.StringVal(r.id()),
+			"label": cty.StringVal(r.label()),
 		})
 	}
 	return out

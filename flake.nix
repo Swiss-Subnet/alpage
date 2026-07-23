@@ -22,6 +22,19 @@
 
         icCanistersTarHash = "sha256-MrUXCUV08zIf/mHkA84fizuCp0BlU81AogEAxdFuapM=";
 
+        # alp version: a git tag when building a tagged rev, else the short rev,
+        # else "dev" for a dirty tree. Injected into main.version by the alp
+        # package's ldflags.
+        alpVersion =
+          self.ref or (if self ? shortRev then "g${self.shortRev}" else "dev");
+
+        # Fixed-output hashes for the codegen derivations and the Go vendor tree.
+        # Set to fakeHash and run `nix build` to learn the real values, then
+        # paste them back. Rehash when the IC release (flake pins) or deps move.
+        genBindingsHash = "sha256-axdmDqj9SYBeSXoGPKJL5p76gWEAEBHjjOGmuQvF88g=";
+        genProtoHash = "sha256-u0RMTWaPFBQd/a7D/pGS8Rxr3wjDfO9wELagbZp8QDM=";
+        alpVendorHash = "sha256-/u2ndj9qCkzR1RYOWJWhxOCmRR64VsPVUl/a3OPzP7U=";
+
         pocketIcPlatform =
           {
             "x86_64-linux" = "x86_64-linux";
@@ -74,10 +87,94 @@
             chmod +x $out/bin/pocket-ic
           '';
         };
+        # Candid bindings (gen/) are generated, not committed. goic is fetched
+        # via `go install`, so this needs network: it is a fixed-output
+        # derivation pinned by genBindingsHash. The .did inputs come from the
+        # already-pinned icCanisters, so output changes only when goic or the IC
+        # release move; rehash then (nix build prints the expected hash).
+        genBindings = pkgs.stdenv.mkDerivation {
+          pname = "alpage-gen-bindings";
+          version = icReleaseTag;
+          src = ./.;
+          nativeBuildInputs = [
+            pkgs.go
+            pkgs.cacert
+          ];
+          IC_CANISTERS_DIR = "${icCanisters}";
+          GOFLAGS = "-mod=mod";
+          buildPhase = ''
+            export HOME="$TMPDIR"
+            export GOPATH="$TMPDIR/go"
+            export GOBIN="$TMPDIR/gobin"
+            export PATH="$GOBIN:$PATH"
+            go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2
+            ./generate.sh
+          '';
+          installPhase = "cp -r gen $out";
+          outputHashMode = "recursive";
+          outputHashAlgo = "sha256";
+          outputHash = genBindingsHash;
+        };
+
+        # Registry protobuf types (nns/registrypb/) are generated from .proto
+        # files fetched from the pinned IC commit over the network, so this is
+        # also a fixed-output derivation. protoc/protoc-gen-go come from nixpkgs.
+        genProto = pkgs.stdenv.mkDerivation {
+          pname = "alpage-gen-proto";
+          version = icReleaseTag;
+          src = ./.;
+          nativeBuildInputs = [
+            pkgs.protobuf
+            pkgs.protoc-gen-go
+            pkgs.curl
+            pkgs.cacert
+            pkgs.go
+          ];
+          IC_RELEASE_COMMIT = icReleaseCommit;
+          buildPhase = ''
+            export HOME="$TMPDIR"
+            ./generate-proto.sh
+          '';
+          installPhase = "cp -r nns/registrypb $out";
+          outputHashMode = "recursive";
+          outputHashAlgo = "sha256";
+          outputHash = genProtoHash;
+        };
+
+        alp = pkgs.buildGoModule {
+          pname = "alp";
+          version = alpVersion;
+          src = ./.;
+          vendorHash = alpVendorHash;
+          # Drop in the generated code the offline build cannot produce itself.
+          preBuild = ''
+            cp -r ${genBindings} gen
+            cp -r ${genProto} nns/registrypb
+            chmod -R u+w gen nns/registrypb
+          '';
+          subPackages = [ "cmd/alp" ];
+          # gnark-crypto (via agent-go) ships arm64/amd64 asm that #includes
+          # generated files from its own GOROOT layout, which buildGoModule's
+          # vendored tree does not reproduce; purego selects its pure-Go paths.
+          tags = [ "purego" ];
+          ldflags = [
+            "-s"
+            "-w"
+            "-X main.version=${alpVersion}"
+          ];
+          doCheck = false;
+        };
       in
       {
         packages = {
-          inherit icCanisters pocketIc;
+          inherit
+            icCanisters
+            pocketIc
+            genBindings
+            genProto
+            ;
+          alp = alp;
+          default = alp;
         };
 
         formatter = pkgs.nixfmt;
