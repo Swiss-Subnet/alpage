@@ -25,6 +25,11 @@ func startNNS(t *testing.T, hotkey principal.Principal) *NNS {
 // ("" when live is false).
 func startNNSSeeded(t *testing.T, hotkey principal.Principal, seeds []SubnetSeed, live bool) (*NNS, *pocketic.Client, string) {
 	t.Helper()
+	return startNNSSeededWithProviders(t, hotkey, seeds, nil, live)
+}
+
+func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds []SubnetSeed, providers []ProviderSeed, live bool) (*NNS, *pocketic.Client, string) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping PocketIC-backed test in -short mode")
 	}
@@ -40,7 +45,7 @@ func startNNSSeeded(t *testing.T, hotkey principal.Principal, seeds []SubnetSeed
 	if err != nil {
 		t.Fatalf("instance: %v", err)
 	}
-	n, err := BringUpWithSubnets(c, inst, testController(), hotkey, seeds)
+	n, err := BringUpWithSubnetsAndProviders(c, inst, testController(), hotkey, seeds, providers)
 	if err != nil {
 		t.Fatalf("bring up: %v", err)
 	}
@@ -200,6 +205,91 @@ func TestPreflightAgainstSeededSubnet(t *testing.T) {
 	}
 	if _, err := FetchSubnetReplicaVersion(url, true, nodeC, DisableQueryVerification()); err == nil {
 		t.Error("fetching an unknown subnet's replica version should error")
+	}
+}
+
+// TestReconcileAgainstSeededSubnet drives Reconcile over the same seeded-registry
+// gateway the Preflight e2e uses: one live member declared (in-sync), one node
+// declared on the subnet that is not a live member (missing), and the remaining
+// live members left undeclared (unmanaged).
+func TestReconcileAgainstSeededSubnet(t *testing.T) {
+	seeds := []SubnetSeed{{SubnetID: subnetX, NumNodes: 3, ReplicaVersion: "0000000000000000000000000000000000000001"}}
+	n, _, url := startNNSSeeded(t, principal.Principal{}, seeds, true)
+	members := n.Members[subnetX.Encode()]
+	if len(members) != 3 {
+		t.Fatalf("seed should have generated 3 members, got %d", len(members))
+	}
+
+	live, err := FetchSubnetMembership(url, true, subnetX, DisableQueryVerification())
+	if err != nil {
+		t.Fatalf("fetch membership over gateway: %v", err)
+	}
+
+	sub := subnetX.Encode()
+	r := res(
+		[]Resource{
+			{Name: "declared_live", ID: members[0].Encode(), Subnet: sub},
+			{Name: "declared_gone", ID: nodeC.Encode(), Subnet: sub},
+		},
+		[]Resource{{Name: "x", ID: sub, Label: "Subnet X"}},
+	)
+	rc := Reconcile(r, sub, live, nil)
+
+	if got := rowFor(rc, members[0].Encode()); got == nil || got.Status != ReconcileInSync {
+		t.Errorf("member[0]: got %+v, want in-sync", got)
+	}
+	if got := rowFor(rc, nodeC.Encode()); got == nil || got.Status != ReconcileMissing {
+		t.Errorf("nodeC: got %+v, want missing", got)
+	}
+	for _, m := range members[1:] {
+		if got := rowFor(rc, m.Encode()); got == nil || got.Status != ReconcileUnmanaged {
+			t.Errorf("undeclared member %s: got %+v, want unmanaged", m.Encode(), got)
+		}
+	}
+	if !rc.HasDrift() {
+		t.Error("expected drift")
+	}
+}
+
+// TestReconcileProvidersAgainstSeededRegistry seeds a provider/operator/dc set
+// and exercises the real query path: FetchProviderOperators over the gateway,
+// then ReconcileProviders classifying a matching operator (ok), a dc mismatch,
+// and an operator the provider does not own (unknown).
+func TestReconcileProvidersAgainstSeededRegistry(t *testing.T) {
+	const (
+		provID = "mrfhx-rsvqz-jndwd-3nrkb-fw3wy-cq64z-iszxt-drffc-f4rtj-ivoop-6ae"
+		opID   = "u7afs-z2fqh-zbqyo-jufwe-3vqqs-chc7f-k2fe4-rt66w-l4qia-keuuj-qqe"
+	)
+	seeds := []SubnetSeed{{SubnetID: subnetX, NumNodes: 1, ReplicaVersion: "0000000000000000000000000000000000000001"}}
+	providers := []ProviderSeed{{ProviderID: provID, OperatorID: opID, DcID: "vd1", DcRegion: "Europe,CH,Vaud"}}
+	_, _, url := startNNSSeededWithProviders(t, principal.Principal{}, seeds, providers, true)
+
+	pid := principal.MustDecode(provID)
+	ops, err := FetchProviderOperators(url, true, pid, DisableQueryVerification())
+	if err != nil {
+		t.Fatalf("fetch provider operators: %v", err)
+	}
+	if len(ops) != 1 || ops[0].OperatorID != opID || ops[0].DcID != "vd1" || ops[0].DcRegion != "Europe,CH,Vaud" {
+		t.Fatalf("unexpected operators: %+v", ops)
+	}
+
+	r := &Resources{
+		Providers: []Resource{{Name: "p", ID: provID}},
+		DCs:       []Resource{{Name: "vd1", ID: "vd1", Region: "Europe,CH,Vaud"}},
+		Operators: []Resource{
+			{Name: "good", ID: opID, Provider: provID, Dc: "vd1"},
+			{Name: "bad_dc", ID: opID, Provider: provID, Dc: "so1"},
+			{Name: "phantom", ID: "aaaaa-aa", Provider: provID, Dc: "vd1"},
+		},
+		labels: map[string]string{},
+	}
+	pr := ReconcileProviders(r, map[string][]ProviderOperator{provID: ops})
+
+	if got := opRowFor(pr, opID); got == nil || got.Status != OperatorOK {
+		t.Errorf("good operator: got %+v, want ok", got)
+	}
+	if got := opRowFor(pr, "aaaaa-aa"); got == nil || got.Status != OperatorUnknown {
+		t.Errorf("phantom operator: got %+v, want unknown", got)
 	}
 }
 

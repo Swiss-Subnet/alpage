@@ -26,6 +26,8 @@ protos=(
   "registry/crypto/v1/crypto.proto"
   "registry/replica_version/v1/replica_version.proto"
   "registry/node/v1/node.proto"
+  "registry/node_operator/v1/node_operator.proto"
+  "registry/dc/v1/dc.proto"
   "types/v1/types.proto"
 )
 
@@ -50,6 +52,8 @@ protoc \
   --go_opt=Mregistry/crypto/v1/crypto.proto=./registrypb \
   --go_opt=Mregistry/replica_version/v1/replica_version.proto=./registrypb \
   --go_opt=Mregistry/node/v1/node.proto=./registrypb \
+  --go_opt=Mregistry/node_operator/v1/node_operator.proto=./registrypb \
+  --go_opt=Mregistry/dc/v1/dc.proto=./registrypb \
   --go_opt=Mtypes/v1/types.proto=./registrypb \
   "${protos[@]/#/$src/}"
 

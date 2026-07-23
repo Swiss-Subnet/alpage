@@ -84,6 +84,45 @@ func FetchSubnetReplicaVersion(host string, fetchRootKey bool, subnetID principa
 	return resp.Ok.ReplicaVersionId, nil
 }
 
+// ProviderOperator is one (operator, data center) pair owned by a node
+// provider, as returned by the registry's
+// get_node_operators_and_dcs_of_node_provider query.
+type ProviderOperator struct {
+	OperatorID string
+	DcID       string
+	DcRegion   string
+}
+
+// FetchProviderOperators returns the operators (and their data centers) the
+// registry records for a node provider. Read-only, trustless: a typed query on
+// the registry canister, no HTTP explorer. An empty slice means the provider is
+// unknown to the registry.
+func FetchProviderOperators(host string, fetchRootKey bool, providerID principal.Principal, opts ...FetchOption) ([]ProviderOperator, error) {
+	a, err := newRegistryAgent(host, fetchRootKey, opts)
+	if err != nil {
+		return nil, fmt.Errorf("new registry agent: %w", err)
+	}
+	resp, err := a.GetNodeOperatorsAndDcsOfNodeProvider(providerID)
+	if err != nil {
+		return nil, fmt.Errorf("get_node_operators_and_dcs_of_node_provider: %w", err)
+	}
+	if resp.Err != nil {
+		return nil, fmt.Errorf("registry rejected query: %s", *resp.Err)
+	}
+	if resp.Ok == nil {
+		return nil, nil
+	}
+	out := make([]ProviderOperator, 0, len(*resp.Ok))
+	for _, pair := range *resp.Ok {
+		out = append(out, ProviderOperator{
+			OperatorID: principal.Principal{Raw: pair.Field1.NodeOperatorPrincipalId}.String(),
+			DcID:       pair.Field1.DcId,
+			DcRegion:   pair.Field0.Region,
+		})
+	}
+	return out, nil
+}
+
 // RenderResourcesHCL renders a subnet and its node membership as a
 // resources.hcl fragment, nodes sorted by id.
 func RenderResourcesHCL(subnetID string, nodeIDs []string) string {

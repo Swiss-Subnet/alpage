@@ -39,6 +39,13 @@ func BringUpWithHotkey(c *pocketic.Client, inst int, controller, hotkey principa
 // get_subnet resolves the given subnets (membership + replica version). Use it
 // to test the read paths (FetchSubnet*, Preflight) against realistic state.
 func BringUpWithSubnets(c *pocketic.Client, inst int, controller, hotkey principal.Principal, seeds []SubnetSeed) (*NNS, error) {
+	return BringUpWithSubnetsAndProviders(c, inst, controller, hotkey, seeds, nil)
+}
+
+// BringUpWithSubnetsAndProviders is BringUpWithSubnets plus node
+// provider/operator/dc records, so get_node_operators_and_dcs_of_node_provider
+// resolves for tests.
+func BringUpWithSubnetsAndProviders(c *pocketic.Client, inst int, controller, hotkey principal.Principal, seeds []SubnetSeed, providers []ProviderSeed) (*NNS, error) {
 	w, err := wasmPathsFromEnv()
 	if err != nil {
 		return nil, err
@@ -53,7 +60,7 @@ func BringUpWithSubnets(c *pocketic.Client, inst int, controller, hotkey princip
 	if err != nil {
 		return nil, fmt.Errorf("encode governance init: %w", err)
 	}
-	regArg, members, err := minimalRegistryInit(seeds)
+	regArg, members, err := minimalRegistryInit(seeds, providers)
 	if err != nil {
 		return nil, fmt.Errorf("encode registry init: %w", err)
 	}
@@ -105,11 +112,16 @@ type registryMutation struct {
 	Value        []byte `ic:"value" json:"value"`
 }
 
-func minimalRegistryInit(seeds []SubnetSeed) ([]byte, map[string][]principal.Principal, error) {
+func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed) ([]byte, map[string][]principal.Principal, error) {
 	muts, members, err := seedMutations(seeds)
 	if err != nil {
 		return nil, nil, err
 	}
+	provMuts, err := seedProviderMutations(providers)
+	if err != nil {
+		return nil, nil, err
+	}
+	muts = append(muts, provMuts...)
 	reqs := []registryMutateRequest{}
 	if len(muts) > 0 {
 		reqs = append(reqs, registryMutateRequest{Preconditions: []registryPrecondition{}, Mutations: muts})

@@ -19,6 +19,7 @@ alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--for
 alp import <name> <proposal_id> --identity <key.pem> [--at RFC3339]
 alp list
 alp status [--host url]
+alp reconcile [--host url]
 alp registry subnet <subnet_id> [--host url]
 ```
 
@@ -26,6 +27,7 @@ alp registry subnet <subnet_id> [--host url]
 - `import` — adopt an already-submitted proposal into state without submitting (Terraform's `import`).
 - `list` — show each declared proposal as in-sync, drifted, or not-submitted. Here "drift" means the committed config's payload no longer matches the payload recorded in state (an edit since submit); it does not reconcile against on-chain state.
 - `status` — read each recorded proposal back from live governance and show its actual on-chain status (open/adopted/rejected/executed/failed) with the current tally. This is the on-chain counterpart to `list`: `list` compares config against state, `status` compares state against the network. Governance purges older proposals; when a recorded id is no longer in governance, `status` falls back to the read-only ICP dashboard API and marks the line `[via ICP dashboard; purged from governance]`. A proposal in neither source is reported as unknown. Read-only.
+- `reconcile` — read-only diff of `resources.hcl` against live on-chain state: nodes vs subnet membership (`in-sync`/`missing`/`deregistered`/`unmanaged`), `node_operator`s vs their provider's on-chain ownership, and each node's declared operator vs its on-chain owner (an operator-owned node missing from `resources.hcl` is reported `unmanaged`). Exits nonzero on drift, so it works as a CI gate. Status fields are colorized on a TTY (honors `NO_COLOR`).
 - `registry subnet` — read-only query of the registry canister for a subnet's current node membership, emitted as a `resources.hcl` fragment (a `subnet` block plus one `node` block per member, sorted by id). Use it to seed or reconcile `resources.hcl` against on-chain state.
 
 For example, the current membership of the Swiss subnet (truncated):

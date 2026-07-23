@@ -38,6 +38,57 @@ type SubnetSeed struct {
 	ReplicaVersion string
 }
 
+// ProviderSeed plants a node provider with one operator in one data center, so
+// get_node_operators_and_dcs_of_node_provider resolves for tests. Ids are
+// textual principals / dc id strings.
+type ProviderSeed struct {
+	ProviderID string
+	OperatorID string
+	DcID       string
+	DcRegion   string
+}
+
+// seedProviderMutations renders node_operator_record_ and data_center_record_
+// entries for each provider seed. The query joins an operator's
+// node_provider_principal_id and dc_id to the requested provider and its DC
+// record, so both records must be present and consistent.
+func seedProviderMutations(seeds []ProviderSeed) ([]registryMutation, error) {
+	var muts []registryMutation
+	for _, s := range seeds {
+		provID, err := principal.Decode(s.ProviderID)
+		if err != nil {
+			return nil, fmt.Errorf("provider seed %q: %w", s.ProviderID, err)
+		}
+		opID, err := principal.Decode(s.OperatorID)
+		if err != nil {
+			return nil, fmt.Errorf("operator seed %q: %w", s.OperatorID, err)
+		}
+		opRec, err := proto.Marshal(&registrypb.NodeOperatorRecord{
+			NodeOperatorPrincipalId: opID.Raw,
+			NodeProviderPrincipalId: provID.Raw,
+			DcId:                    s.DcID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal node_operator_record %s: %w", s.OperatorID, err)
+		}
+		muts = append(muts, registryMutation{
+			Key:          []byte("node_operator_record_" + s.OperatorID),
+			MutationType: mutationInsert,
+			Value:        opRec,
+		})
+		dcRec, err := proto.Marshal(&registrypb.DataCenterRecord{Id: s.DcID, Region: s.DcRegion})
+		if err != nil {
+			return nil, fmt.Errorf("marshal data_center_record %s: %w", s.DcID, err)
+		}
+		muts = append(muts, registryMutation{
+			Key:          []byte("data_center_record_" + s.DcID),
+			MutationType: mutationInsert,
+			Value:        dcRec,
+		})
+	}
+	return muts, nil
+}
+
 // seedMutations renders the full record set that makes each seeded subnet
 // resolvable via get_subnet AND passes the registry's init invariant battery.
 // The battery (crypto/CUP, elected replica version, "at least one system

@@ -51,12 +51,14 @@ func run() error {
 		return status(os.Args[2:])
 	case "plan":
 		return plan(os.Args[2:])
+	case "reconcile":
+		return reconcile(os.Args[2:])
 	case "registry":
 		return registryCmd(os.Args[2:])
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, registry)", os.Args[1])
+		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, reconcile, registry)", os.Args[1])
 	}
 }
 
@@ -67,6 +69,7 @@ func usage() error {
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
   alp list
   alp status [--host url]
+  alp reconcile [--host url]
   alp registry subnet <subnet_id> [--host url]`)
 	return nil
 }
@@ -392,6 +395,138 @@ func status(argv []string) error {
 		fmt.Println(nns.StatusLine(s.Name, entry, ps))
 	}
 	return nil
+}
+
+// reconcile diffs the declared resources.hcl against live on-chain registry
+// membership, per subnet. Read-only, and the resource-level counterpart to
+// status: list/status close the config<->state<->network loop for proposals,
+// reconcile closes it for the node/subnet inventory. Exits nonzero on drift so
+// it is usable as a CI gate.
+func reconcile(argv []string) error {
+	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
+	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
+	host := fs.String("host", "", "IC host to query (overrides provider block)")
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+	cfg, err := nns.LoadConfig(*config)
+	if err != nil {
+		return err
+	}
+	nns.Color = nns.DetectColor()
+	effHost := resolveHost(cfg.Provider, *host)
+	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	if len(cfg.Resources.Subnets) == 0 && len(cfg.Resources.Providers) == 0 {
+		fmt.Println("no subnet or node_provider resources declared in resources.hcl")
+		return nil
+	}
+	var b strings.Builder
+	drift := false
+	for _, sn := range cfg.Resources.Subnets {
+		subnetID, err := principal.Decode(sn.ID)
+		if err != nil {
+			return fmt.Errorf("subnet %q: invalid id %q: %w", sn.Name, sn.ID, err)
+		}
+		live, err := nns.FetchSubnetMembership(effHost, fetchRootKey, subnetID)
+		if err != nil {
+			return fmt.Errorf("subnet %q: %w", sn.Name, err)
+		}
+		status, err := nodeStatusForSubnet(cfg.Resources, sn.ID, live)
+		if err != nil {
+			return fmt.Errorf("subnet %q: %w", sn.Name, err)
+		}
+		rc := nns.Reconcile(cfg.Resources, sn.ID, live, status)
+		rc.Render(&b)
+		drift = drift || rc.HasDrift()
+	}
+	if len(cfg.Resources.Providers) > 0 {
+		byProvider, err := providerOperators(cfg.Resources, effHost, fetchRootKey)
+		if err != nil {
+			return err
+		}
+		pr := nns.ReconcileProviders(cfg.Resources, byProvider)
+		pr.Render(&b)
+		drift = drift || pr.HasDrift()
+
+		byOperator, err := operatorNodes(cfg.Resources)
+		if err != nil {
+			return err
+		}
+		nr := nns.ReconcileOperatorNodes(cfg.Resources, byOperator)
+		nr.Render(&b)
+		drift = drift || nr.HasDrift()
+	}
+	fmt.Print(b.String())
+	if drift {
+		return fmt.Errorf("reconcile found drift between resources.hcl and on-chain state")
+	}
+	return nil
+}
+
+// providerOperators queries, for each declared node_provider, the operators and
+// data centers the registry records it owns. Trustless: a typed registry query,
+// no HTTP explorer. Progress is on stderr.
+func providerOperators(r *nns.Resources, host string, fetchRootKey bool) (map[string][]nns.ProviderOperator, error) {
+	out := make(map[string][]nns.ProviderOperator, len(r.Providers))
+	for i, p := range r.Providers {
+		fmt.Fprintf(os.Stderr, "checking node provider %d/%d (%s)...\n", i+1, len(r.Providers), p.ID)
+		pid, err := principal.Decode(p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("provider %q: invalid id %q: %w", p.Name, p.ID, err)
+		}
+		ops, err := nns.FetchProviderOperators(host, fetchRootKey, pid)
+		if err != nil {
+			return nil, fmt.Errorf("provider %q: %w", p.Name, err)
+		}
+		out[p.ID] = ops
+	}
+	return out, nil
+}
+
+// operatorNodes queries, for each declared node_operator, the node ids the
+// registry records it owns. See FetchOperatorNodes's HTTP-trust caveat; the
+// explorer is used because there is no typed operator->nodes query. Progress is
+// on stderr.
+func operatorNodes(r *nns.Resources) (map[string][]string, error) {
+	out := make(map[string][]string, len(r.Operators))
+	for i, op := range r.Operators {
+		fmt.Fprintf(os.Stderr, "checking node operator %d/%d (%s)...\n", i+1, len(r.Operators), op.ID)
+		nodes, err := nns.FetchOperatorNodes(nns.DefaultRegistryExplorer, op.ID)
+		if err != nil {
+			return nil, fmt.Errorf("operator %q: %w", op.Name, err)
+		}
+		out[op.ID] = nodes
+	}
+	return out, nil
+}
+
+// nodeStatusForSubnet fetches registry registration state for each declared
+// node on a subnet that is not a current live member: those are the candidates
+// for the deregistered-vs-missing distinction. Progress is on stderr.
+func nodeStatusForSubnet(r *nns.Resources, subnetID string, live []string) (map[string]nns.NodeStatus, error) {
+	member := map[string]bool{}
+	for _, id := range live {
+		member[id] = true
+	}
+	var pending []string
+	for _, n := range r.Nodes {
+		if n.Subnet == subnetID && !member[n.ID] {
+			pending = append(pending, n.ID)
+		}
+	}
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	status := make(map[string]nns.NodeStatus, len(pending))
+	for i, id := range pending {
+		fmt.Fprintf(os.Stderr, "checking node record %d/%d (%s)...\n", i+1, len(pending), id)
+		s, err := nns.FetchNodeStatus(nns.DefaultRegistryExplorer, id)
+		if err != nil {
+			return nil, err
+		}
+		status[id] = s
+	}
+	return status, nil
 }
 
 // splitArgs separates the first n leading positional arguments from the rest,
