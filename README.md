@@ -23,7 +23,7 @@ alp reconcile [--host url]
 alp registry subnet <subnet_id> [--host url]
 ```
 
-- `apply` — dry-run on PocketIC, then submit to the live network with `--yes` (type `submit` to confirm), then write state.
+- `apply` — check the `--identity` can submit from the neuron (fails fast on a wrong key), dry-run on PocketIC, then submit to the live network with `--yes` (type `submit` to confirm), then write state.
 - `import` — adopt an already-submitted proposal into state without submitting (Terraform's `import`).
 - `list` — show each declared proposal as in-sync, drifted, or not-submitted. Here "drift" means the committed config's payload no longer matches the payload recorded in state (an edit since submit); it does not reconcile against on-chain state.
 - `status` — read each recorded proposal back from live governance and show its actual on-chain status (open/adopted/rejected/executed/failed) with the current tally. This is the on-chain counterpart to `list`: `list` compares config against state, `status` compares state against the network. Governance purges older proposals; when a recorded id is no longer in governance, `status` falls back to the read-only ICP dashboard API and marks the line `[via ICP dashboard; purged from governance]`. A proposal in neither source is reported as unknown. Read-only.

@@ -137,6 +137,17 @@ func apply(argv []string) error {
 	effHost, effNeuron := resolveHost(cfg.Provider, *host), resolveNeuron(cfg.Provider, *neuronID)
 	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
 
+	// Fail fast before the dry-run and any state mutation.
+	var accessOpts []nns.FetchOption
+	if fetchRootKey {
+		accessOpts = append(accessOpts, nns.DisableQueryVerification())
+	}
+	access, err := nns.CheckNeuronAccess(id, effHost, fetchRootKey, effNeuron, accessOpts...)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Neuron access: %s (%s)\n", access, id.Principal().Encode())
+
 	st, err := nns.LoadState(*statePath)
 	if err != nil {
 		return err

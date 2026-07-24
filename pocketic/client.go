@@ -20,10 +20,11 @@ const serverMajorVersion = 15
 var b64 = base64.StdEncoding
 
 type Client struct {
-	base   string // http://127.0.0.1:<port>
-	http   *http.Client
-	poll   time.Duration
-	server *serverProc
+	base    string // http://127.0.0.1:<port>
+	http    *http.Client
+	poll    time.Duration
+	maxWait time.Duration // cap on a single do/pollGraph loop
+	server  *serverProc
 }
 
 // Server's untagged ApiResponse<T>: 200 carries T directly; 202 carries
@@ -37,7 +38,8 @@ type startedOrBusy struct {
 // do issues a POST (or GET when body is nil) and resolves the async protocol:
 // 200 -> raw body; 202 -> poll read_graph; 409 -> retry; else error.
 func (c *Client) do(method, path string, body any) ([]byte, error) {
-	for attempt := 0; ; attempt++ {
+	deadline := time.Now().Add(c.maxWait)
+	for {
 		raw, status, err := c.roundtrip(method, path, body)
 		if err != nil {
 			return nil, err
@@ -50,9 +52,12 @@ func (c *Client) do(method, path string, body any) ([]byte, error) {
 			if err := json.Unmarshal(raw, &sb); err != nil {
 				return nil, fmt.Errorf("decode Started: %w", err)
 			}
-			return c.pollGraph(sb)
+			return c.pollGraph(sb, deadline)
 		case http.StatusConflict:
 			// Busy: instance occupied by another computation; retry original.
+			if time.Now().After(deadline) {
+				return nil, fmt.Errorf("%s %s: still busy (409) after %s", method, path, c.maxWait)
+			}
 			time.Sleep(c.poll)
 			continue
 		default:
@@ -88,7 +93,7 @@ func (c *Client) roundtrip(method, path string, body any) ([]byte, int, error) {
 
 // pollGraph polls GET /read_graph/{state_label}/{op_id} on the server root
 // until it stops 404-ing, then returns the resolved body.
-func (c *Client) pollGraph(sb startedOrBusy) ([]byte, error) {
+func (c *Client) pollGraph(sb startedOrBusy, deadline time.Time) ([]byte, error) {
 	path := fmt.Sprintf("/read_graph/%s/%s", sb.StateLabel, sb.OpID)
 	for {
 		raw, status, err := c.roundtrip(http.MethodGet, path, nil)
@@ -101,6 +106,9 @@ func (c *Client) pollGraph(sb startedOrBusy) ([]byte, error) {
 			_, _, _ = c.roundtrip(http.MethodDelete, fmt.Sprintf("/prune_graph/%s/%s", sb.StateLabel, sb.OpID), nil)
 			return raw, nil
 		case http.StatusNotFound:
+			if time.Now().After(deadline) {
+				return nil, fmt.Errorf("read_graph %s: unresolved (404) after %s", path, c.maxWait)
+			}
 			time.Sleep(c.poll)
 			continue
 		default:

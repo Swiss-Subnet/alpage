@@ -65,7 +65,10 @@ func BringUpWithSubnetsAndProviders(c *pocketic.Client, inst int, controller, ho
 		return nil, fmt.Errorf("encode registry init: %w", err)
 	}
 	// root's candid service init is (): empty args.
-	empty, _ := candid.Marshal([]any{})
+	empty, err := candid.Marshal([]any{})
+	if err != nil {
+		return nil, fmt.Errorf("encode root init: %w", err)
+	}
 
 	for _, u := range []unit{
 		{RegistryID, w.registry, regArg},

@@ -2,13 +2,29 @@ package nns
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/aviate-labs/agent-go"
 	"github.com/swiss-subnet/alpage/gen/governance"
 )
 
 const MainnetHost = "https://icp-api.io"
+
+// queryTimeout bounds any single agent-go or HTTP call to the IC. Without it a
+// stalled icp-api.io connection hangs plan/apply/status forever; matches the
+// deadline the explorer fetchers in noderecord.go already set.
+const queryTimeout = 15 * time.Second
+
+// clientOptions builds the agent-go client options for host u, always with a
+// bounded HTTP client so no query path can hang indefinitely.
+func clientOptions(u *url.URL) []agent.ClientOption {
+	return []agent.ClientOption{
+		agent.WithHostURL(u),
+		agent.WithHttpClient(&http.Client{Timeout: queryTimeout}),
+	}
+}
 
 // SubmitMainnet submits an Action to a live IC as a signed ingress message and
 // returns the new proposal id. id must be the neuron's controller or a
@@ -25,7 +41,7 @@ func SubmitMainnet(id *Identity, host string, fetchRootKey bool, neuron governan
 	}
 	a, err := agent.New(agent.Config{
 		Identity:     id.id,
-		ClientConfig: []agent.ClientOption{agent.WithHostURL(u)},
+		ClientConfig: clientOptions(u),
 		FetchRootKey: fetchRootKey,
 	})
 	if err != nil {

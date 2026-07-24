@@ -60,7 +60,7 @@ func fetchProposalInfo(host string, fetchRootKey bool, id uint64) (*governance.P
 		return nil, fmt.Errorf("parse host %q: %w", host, err)
 	}
 	a, err := governance.NewGovernanceAgent(GovernanceID, agent.Config{
-		ClientConfig: []agent.ClientOption{agent.WithHostURL(u)},
+		ClientConfig: clientOptions(u),
 		FetchRootKey: fetchRootKey,
 	})
 	if err != nil {
@@ -87,7 +87,8 @@ func statusFromGovernance(info *governance.ProposalInfo) *ProposalStatus {
 // fetchDashboardStatus queries the ICP dashboard API. A 404 means the dashboard
 // has no such proposal (nil, nil); any other transport/parse error is returned.
 func fetchDashboardStatus(id uint64) (*ProposalStatus, error) {
-	resp, err := http.Get(fmt.Sprintf("%s/%d", DashboardAPI, id))
+	client := &http.Client{Timeout: queryTimeout}
+	resp, err := client.Get(fmt.Sprintf("%s/%d", DashboardAPI, id))
 	if err != nil {
 		return nil, fmt.Errorf("dashboard get %d: %w", id, err)
 	}
@@ -147,7 +148,7 @@ func StatusLine(name string, e Entry, ps *ProposalStatus) string {
 	}
 	line := fmt.Sprintf("%-24s  proposal %d  %s  yes=%d no=%d", name, e.ProposalID, ps.Label, ps.Yes, ps.No)
 	switch {
-	case ps.Total > 0:
+	case ps.Total >= ps.Yes+ps.No && ps.Total > 0:
 		didNotVote := ps.Total - ps.Yes - ps.No
 		line += fmt.Sprintf(" (of total voting power: yes %.1f%% / no %.1f%% / did not vote %.1f%%)",
 			pct(ps.Yes, ps.Total), pct(ps.No, ps.Total), pct(didNotVote, ps.Total))

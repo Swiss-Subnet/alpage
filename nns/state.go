@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 )
 
@@ -50,14 +51,34 @@ func LoadState(path string) (*State, error) {
 }
 
 // SaveState writes the consolidated state with stable, diff-friendly
-// formatting (keys sorted by Go's json map encoding).
+// formatting (keys sorted by Go's json map encoding). It writes to a temp file
+// in the same directory and renames it into place so a crash mid-write cannot
+// corrupt the record of what was submitted on-chain.
 func SaveState(path string, s *State) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 // Import records an already-submitted proposal into state (the terraform

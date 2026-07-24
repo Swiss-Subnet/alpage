@@ -51,10 +51,11 @@ func Start(binPath string) (*Client, error) {
 		return nil, err
 	}
 	return &Client{
-		base:   fmt.Sprintf("http://127.0.0.1:%d", port),
-		http:   newHTTPClient(),
-		poll:   50 * time.Millisecond,
-		server: &serverProc{cmd: cmd, portFile: portFile},
+		base:    fmt.Sprintf("http://127.0.0.1:%d", port),
+		http:    newHTTPClient(),
+		poll:    50 * time.Millisecond,
+		maxWait: 120 * time.Second,
+		server:  &serverProc{cmd: cmd, portFile: portFile},
 	}, nil
 }
 
@@ -75,13 +76,17 @@ func checkVersion(binPath string) error {
 	if err != nil {
 		return fmt.Errorf("pocket-ic --version: %w", err)
 	}
-	// "pocket-ic-server 13.0.0"
+	// "pocket-ic-server 15.0.0"
 	fields := strings.Fields(strings.TrimSpace(string(out)))
 	if len(fields) < 2 {
 		return fmt.Errorf("unexpected version string: %q", string(out))
 	}
 	major := strings.SplitN(fields[len(fields)-1], ".", 2)[0]
-	if maj, _ := strconv.Atoi(major); maj != serverMajorVersion {
+	maj, err := strconv.Atoi(major)
+	if err != nil {
+		return fmt.Errorf("parse pocket-ic version major %q: %w (%q)", major, err, string(out))
+	}
+	if maj != serverMajorVersion {
 		return fmt.Errorf("pocket-ic server major version %s, want %d (%q)", major, serverMajorVersion, string(out))
 	}
 	return nil

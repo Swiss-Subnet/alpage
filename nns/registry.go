@@ -38,7 +38,7 @@ func newRegistryAgent(host string, fetchRootKey bool, opts []FetchOption) (*regi
 		opt(&o)
 	}
 	return registry.NewRegistryAgent(RegistryID, agent.Config{
-		ClientConfig:                   []agent.ClientOption{agent.WithHostURL(u)},
+		ClientConfig:                   clientOptions(u),
 		FetchRootKey:                   fetchRootKey,
 		DisableSignedQueryVerification: o.disableQueryVerify,
 	})

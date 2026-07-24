@@ -106,6 +106,20 @@ func TestStatusLineTallyFallbackToCast(t *testing.T) {
 	}
 }
 
+func TestStatusLineTallyStaleTotalNoUnderflow(t *testing.T) {
+	e := Entry{ProposalID: 1, PayloadSHA256: "abc"}
+	// yes+no > total (mismatched denominators): must not underflow uint64 into a
+	// garbage "did not vote" figure; falls back to votes-cast.
+	ps := &ProposalStatus{Source: SourceGovernance, Label: "Executed (4)", Yes: 750, No: 250, Total: 100}
+	line := StatusLine("p", e, ps)
+	if strings.Contains(line, "did not vote") {
+		t.Errorf("stale total should not render did-not-vote, got %q", line)
+	}
+	if !strings.Contains(line, "votes cast") || !strings.Contains(line, "yes 75.0%") {
+		t.Errorf("expected cast-based fallback, got %q", line)
+	}
+}
+
 func TestStatusLineTallyZeroNoPercent(t *testing.T) {
 	e := Entry{ProposalID: 1, PayloadSHA256: "abc"}
 	ps := &ProposalStatus{Source: SourceGovernance, Label: "Open (1)", Yes: 0, No: 0, Total: 0}

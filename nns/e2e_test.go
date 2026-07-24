@@ -2,7 +2,6 @@ package nns
 
 import (
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -70,17 +69,17 @@ func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds
 	return n, c, url
 }
 
-// wave1 loads the committed swiss-subnet-wave1 resize proposal. Tests run from
-// nns/, so proposals.hcl sits one directory up.
-func wave1(t *testing.T) ResizeProposal {
+// resizeFixture loads the self-contained resize fixture (the live config lives
+// in a separate repo).
+func resizeFixture(t *testing.T) ResizeProposal {
 	t.Helper()
-	spec, err := LoadSpec(filepath.Join("..", DefaultConfigPath), "swiss-subnet-wave1")
+	spec, err := LoadSpec("testdata/golden_src/proposals.hcl", "resize-fixture")
 	if err != nil {
-		t.Fatalf("load wave1 spec: %v", err)
+		t.Fatalf("load resize-fixture spec: %v", err)
 	}
 	p, err := spec.Proposal()
 	if err != nil {
-		t.Fatalf("decode wave1 spec: %v", err)
+		t.Fatalf("decode resize-fixture spec: %v", err)
 	}
 	return p
 }
@@ -89,11 +88,11 @@ func assertResizeRendered(t *testing.T, rendered string) {
 	t.Helper()
 	for _, want := range []string{
 		"change_subnet_membership",
-		"3zsyy-cnoqf",
-		"nodes removed (6)",
+		"wmzac-nabae", // fixture subnet.test
+		"nodes removed (2)",
 		"nodes added (0)",
-		"ezsx4-peoff", // spot-check two of the six removed node ids
-		"vou34-3jw7y",
+		"uduew-qycai", // node.n1
+		"dchi6-uidam", // inline removed id
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("rendered proposal missing %q", want)
@@ -101,11 +100,11 @@ func assertResizeRendered(t *testing.T, rendered string) {
 	}
 }
 
-func TestSwissSubnetWave1(t *testing.T) {
+func TestSubmitResizeFixture(t *testing.T) {
 	n := startNNS(t, principal.Principal{})
 	neuron := n.ProposerNeuron()
 
-	pid, err := n.SubmitResize(neuron, wave1(t))
+	pid, err := n.SubmitResize(neuron, resizeFixture(t))
 	if err != nil {
 		t.Fatalf("submit resize: %v", err)
 	}
@@ -320,7 +319,7 @@ func TestSubmitViaHotkey(t *testing.T) {
 	}
 
 	// Submit as the hotkey principal, not the controller.
-	pid, err := n.SubmitResizeAs(n.Hotkey, n.ProposerNeuron(), wave1(t))
+	pid, err := n.SubmitResizeAs(n.Hotkey, n.ProposerNeuron(), resizeFixture(t))
 	if err != nil {
 		t.Fatalf("submit via hotkey: %v", err)
 	}

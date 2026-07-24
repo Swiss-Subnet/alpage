@@ -1,5 +1,5 @@
-// Command reproduce brings up a local NNS on PocketIC, submits the subnet-resize
-// proposal 141235, and prints the decoded proposal the way the NNS dapp would.
+// Command reproduce brings up a local NNS on PocketIC, submits the synthetic
+// resize fixture, and prints the decoded proposal. Run from the repo root.
 package main
 
 import (
@@ -43,15 +43,15 @@ func run() error {
 		return err
 	}
 
-	spec, err := nns.LoadSpec(nns.DefaultConfigPath, "swiss-subnet-wave1")
+	spec, err := nns.LoadSpec("nns/testdata/golden_src/proposals.hcl", "resize-fixture")
 	if err != nil {
 		return err
 	}
-	wave1, err := spec.Proposal()
+	resize, err := spec.Proposal()
 	if err != nil {
 		return err
 	}
-	pid, err := n.SubmitResize(n.ProposerNeuron(), wave1)
+	pid, err := n.SubmitResize(n.ProposerNeuron(), resize)
 	if err != nil {
 		return err
 	}
