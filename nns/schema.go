@@ -78,8 +78,9 @@ var SchemaBlocks = []SchemaBlock{
 // requires an entry for every non-label field on a documented struct; a missing
 // entry (or an entry for a field that no longer exists) fails generation.
 var SchemaFieldDocs = map[string]string{
-	"Subnet.id":    "Principal of the subnet.",
-	"Subnet.label": "Human-readable name.",
+	"Subnet.id":          "Principal of the subnet.",
+	"Subnet.label":       "Human-readable name.",
+	"Subnet.sev_enabled": "Whether the subnet runs with SEV-SNP enabled, reconciled against the registry's features.sev_enabled. Omitted means false.",
 
 	"DataCenter.id":     "Registry data center id.",
 	"DataCenter.label":  "Human-readable name.",
@@ -93,10 +94,11 @@ var SchemaFieldDocs = map[string]string{
 	"NodeOperator.provider": "Id of its node provider (node_provider.<name>.id).",
 	"NodeOperator.dc":       "Id of its data center (data_center.<name>.id).",
 
-	"NodeRes.id":       "Principal of the node.",
-	"NodeRes.label":    "Human-readable name.",
-	"NodeRes.subnet":   "Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned.",
-	"NodeRes.operator": "Id of its node operator (node_operator.<name>.id).",
+	"NodeRes.id":             "Principal of the node.",
+	"NodeRes.label":          "Human-readable name.",
+	"NodeRes.subnet":         "Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned.",
+	"NodeRes.operator":       "Id of its node operator (node_operator.<name>.id).",
+	"NodeRes.decommissioned": "Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry.",
 
 	"Provider.host":           "Governance host URL. Defaults per command; overridden by --host.",
 	"Provider.neuron":         "Proposer neuron id.",

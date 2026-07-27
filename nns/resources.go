@@ -27,6 +27,12 @@ type Subnet struct {
 	Name  string `hcl:"name,label"`
 	ID    string `hcl:"id"`
 	Label string `hcl:"label,optional"`
+	// SevEnabled is reconciled against the subnet record's features.sev_enabled.
+	// Omitted means false: subnets are not SEV-enabled by default, so an
+	// undeclared subnet that is enabled on-chain is drift. SEV-SNP enablement is
+	// a subnet-level fact on-chain; the registry's per-node record carries only
+	// chip_id (hardware provenance), not runtime TEE state.
+	SevEnabled bool `hcl:"sev_enabled,optional"`
 }
 
 // NodeProvider is referenced from node_operator as node_provider.<name>.id.
@@ -69,6 +75,11 @@ type NodeRes struct {
 	Subnet string `hcl:"subnet,optional"`
 	// Operator is the id of its node operator (node_operator.<name>.id).
 	Operator string `hcl:"operator,optional"`
+	// Decommissioned marks a node that has been deregistered on-chain. Its block
+	// is kept so historical proposal payloads keep resolving to the ids they were
+	// submitted with; reconcile expects it to be absent from the registry, and
+	// reports drift if it is still there.
+	Decommissioned bool `hcl:"decommissioned,optional"`
 }
 
 func (s Subnet) name() string        { return s.Name }

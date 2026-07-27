@@ -14,6 +14,7 @@ A subnet, referenced from proposals and nodes as subnet.<name>.id.
 |-------|------|----------|-------------|
 | `id` | attr | yes | Principal of the subnet. |
 | `label` | attr | no | Human-readable name. |
+| `sev_enabled` | attr | no | Whether the subnet runs with SEV-SNP enabled, reconciled against the registry's features.sev_enabled. Omitted means false. |
 
 ### `data_center "<name>" { }`
 
@@ -55,6 +56,7 @@ A node, referenced from proposals as node.<name>.id.
 | `label` | attr | no | Human-readable name. |
 | `subnet` | attr | no | Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned. |
 | `operator` | attr | no | Id of its node operator (node_operator.<name>.id). |
+| `decommissioned` | attr | no | Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. |
 
 ## `proposals.hcl`
 

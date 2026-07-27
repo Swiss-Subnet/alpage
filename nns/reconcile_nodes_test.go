@@ -62,6 +62,50 @@ func TestReconcileOperatorNodesClean(t *testing.T) {
 	}
 }
 
+// A decommissioned node is expected to be gone: its deregistration is the declared
+// state, not drift. Decommissioned blocks exist so historical proposal payloads keep
+// resolving to the ids they were submitted with.
+func TestReconcileOperatorNodesDecommissioned(t *testing.T) {
+	r := &Resources{
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes: []NodeRes{
+			{Name: "n_new", ID: "n-new", Operator: "op-a"},
+			{Name: "n_old", ID: "n-old", Operator: "op-a", Decommissioned: true},
+		},
+		labels: map[string]string{},
+	}
+	byOperator := map[string][]string{"op-a": {"n-new"}}
+
+	nr := ReconcileOperatorNodes(r, byOperator)
+
+	if got := nodeRowFor(nr, "n-old"); got == nil || got.Status != NodeOwnershipDecommissioned {
+		t.Errorf("n-old: got %+v, want decommissioned", got)
+	}
+	if nr.HasDrift() {
+		t.Errorf("a decommissioned node that is gone is not drift, got %+v", nr.Nodes)
+	}
+}
+
+// A node declared decommissioned that the registry still says is owned is drift: the
+// config claims it is decommissioned but it is not.
+func TestReconcileOperatorNodesDecommissionedButStillOwned(t *testing.T) {
+	r := &Resources{
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes:     []NodeRes{{Name: "n_old", ID: "n-old", Operator: "op-a", Decommissioned: true}},
+		labels:    map[string]string{},
+	}
+	byOperator := map[string][]string{"op-a": {"n-old"}}
+
+	nr := ReconcileOperatorNodes(r, byOperator)
+
+	if got := nodeRowFor(nr, "n-old"); got == nil || got.Status != NodeOwnershipMismatch {
+		t.Errorf("n-old: got %+v, want mismatch", got)
+	}
+	if !nr.HasDrift() {
+		t.Error("expected drift: declared decommissioned but still owned on-chain")
+	}
+}
+
 // A node that declares no operator is not diffed against ownership at all.
 func TestReconcileOperatorNodesSkipsUndeclaredOperator(t *testing.T) {
 	r := &Resources{

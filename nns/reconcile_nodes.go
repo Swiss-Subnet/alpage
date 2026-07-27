@@ -22,14 +22,18 @@ const (
 	// NodeOwnershipUnmanaged: on-chain owned by a declared operator but no node
 	// block ties it to that operator.
 	NodeOwnershipUnmanaged NodeOwnershipStatus = "unmanaged"
+	// NodeOwnershipDecommissioned: declared decommissioned and absent from the
+	// registry, as expected. Not drift.
+	NodeOwnershipDecommissioned NodeOwnershipStatus = "decommissioned"
 )
 
 type NodeOwnershipRow struct {
-	NodeID   string
-	Name     string
-	Operator string // declared operator id, if any
-	Owner    string // on-chain owning operator id, if any
-	Status   NodeOwnershipStatus
+	NodeID         string
+	Name           string
+	Operator       string // declared operator id, if any
+	Owner          string // on-chain owning operator id, if any
+	Decommissioned bool   // declared decommissioned
+	Status         NodeOwnershipStatus
 }
 
 // NodeOwnershipReconcile is the diff of declared node->operator links against
@@ -66,11 +70,19 @@ func ReconcileOperatorNodes(r *Resources, byOperator map[string][]string) NodeOw
 		if n.Operator == "" {
 			continue
 		}
-		row := NodeOwnershipRow{NodeID: n.ID, Name: n.Name, Operator: n.Operator, Owner: owner[n.ID]}
-		switch owner[n.ID] {
-		case "":
+		row := NodeOwnershipRow{
+			NodeID: n.ID, Name: n.Name, Operator: n.Operator,
+			Owner: owner[n.ID], Decommissioned: n.Decommissioned,
+		}
+		switch {
+		case n.Decommissioned && owner[n.ID] == "":
+			row.Status = NodeOwnershipDecommissioned
+		case n.Decommissioned:
+			// Declared gone but the registry still records an owner.
+			row.Status = NodeOwnershipMismatch
+		case owner[n.ID] == "":
 			row.Status = NodeOwnershipGone
-		case n.Operator:
+		case owner[n.ID] == n.Operator:
 			row.Status = NodeOwnershipOK
 		default:
 			row.Status = NodeOwnershipMismatch
@@ -93,7 +105,7 @@ func ReconcileOperatorNodes(r *Resources, byOperator map[string][]string) NodeOw
 
 func (nr NodeOwnershipReconcile) HasDrift() bool {
 	for _, row := range nr.Nodes {
-		if row.Status != NodeOwnershipOK {
+		if row.Status != NodeOwnershipOK && row.Status != NodeOwnershipDecommissioned {
 			return true
 		}
 	}
@@ -115,6 +127,10 @@ func (nr NodeOwnershipReconcile) Render(b *strings.Builder) {
 		detail := ""
 		switch row.Status {
 		case NodeOwnershipMismatch:
+			if row.Owner != "" && row.Decommissioned {
+				detail = fmt.Sprintf("  (declared decommissioned but still owned by %s)", row.Owner)
+				break
+			}
 			detail = fmt.Sprintf("  (declared operator %s, on-chain %s)", row.Operator, row.Owner)
 		case NodeOwnershipGone:
 			detail = fmt.Sprintf("  (declared operator %s owns it no longer)", row.Operator)
@@ -128,7 +144,7 @@ func (nr NodeOwnershipReconcile) Render(b *strings.Builder) {
 
 func (s NodeOwnershipStatus) color() string {
 	switch s {
-	case NodeOwnershipOK:
+	case NodeOwnershipOK, NodeOwnershipDecommissioned:
 		return ansiGreen
 	case NodeOwnershipUnmanaged:
 		return ansiYellow

@@ -64,6 +64,27 @@ func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Pr
 	return decodeMembership(resp.Ok.Membership), nil
 }
 
+// FetchSubnetFeatures returns a subnet's feature flags from its registry
+// record. Read-only. A subnet record with no features block yields the zero
+// value, which reads as every feature off.
+func FetchSubnetFeatures(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (SubnetFeatures, error) {
+	a, err := newRegistryAgent(host, fetchRootKey, opts)
+	if err != nil {
+		return SubnetFeatures{}, fmt.Errorf("new registry agent: %w", err)
+	}
+	resp, err := a.GetSubnet(registry.GetSubnetRequest{SubnetId: &subnetID})
+	if err != nil {
+		return SubnetFeatures{}, fmt.Errorf("get_subnet: %w", err)
+	}
+	if resp.Err != nil {
+		return SubnetFeatures{}, fmt.Errorf("registry rejected get_subnet: %s", *resp.Err)
+	}
+	if resp.Ok == nil {
+		return SubnetFeatures{}, fmt.Errorf("get_subnet: empty response")
+	}
+	return SubnetFeatures{SevEnabled: resp.Ok.Features.SevEnabled}, nil
+}
+
 // FetchSubnetReplicaVersion returns a subnet's current GuestOS/replica version
 // id from the registry. Read-only.
 func FetchSubnetReplicaVersion(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (string, error) {

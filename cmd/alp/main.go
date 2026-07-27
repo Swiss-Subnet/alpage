@@ -469,6 +469,14 @@ func reconcile(argv []string) error {
 		rc := nns.Reconcile(cfg.Resources, sn.ID, live, status)
 		rc.Render(&b)
 		drift = drift || rc.HasDrift()
+
+		feat, err := nns.FetchSubnetFeatures(effHost, fetchRootKey, subnetID)
+		if err != nil {
+			return fmt.Errorf("subnet %q: %w", sn.Name, err)
+		}
+		fr := nns.ReconcileSubnetFeatures(sn, feat)
+		fr.Render(&b)
+		drift = drift || fr.HasDrift()
 	}
 	if len(cfg.Resources.Providers) > 0 {
 		byProvider, err := providerOperators(cfg.Resources, effHost, fetchRootKey)
