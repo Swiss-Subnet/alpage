@@ -89,7 +89,7 @@ func run() error {
 
 func usage() error {
 	fmt.Println(`usage:
-  alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force]
+  alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force] [--offline]
   alp plan   <name> [--host url]
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
   alp list
@@ -109,6 +109,7 @@ func apply(argv []string) error {
 	host := fs.String("host", "", "IC host to submit to (overrides provider block)")
 	yes := fs.Bool("yes", false, "actually submit to the live network after the dry-run")
 	force := fs.Bool("force", false, "submit even if state already records a proposal id")
+	offline := fs.Bool("offline", false, "never fetch dry-run artifacts; use only env vars and the existing cache")
 	pos, rest := splitArgs(argv, 1)
 	if err := fs.Parse(rest); err != nil {
 		return err
@@ -143,17 +144,6 @@ func apply(argv []string) error {
 	effHost, effNeuron := resolveHost(cfg.Provider, *host), resolveNeuron(cfg.Provider, *neuronID)
 	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
 
-	// Fail fast before the dry-run and any state mutation.
-	var accessOpts []nns.FetchOption
-	if fetchRootKey {
-		accessOpts = append(accessOpts, nns.DisableQueryVerification())
-	}
-	access, err := nns.CheckNeuronAccess(id, effHost, fetchRootKey, effNeuron, accessOpts...)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("Neuron access: %s (%s)\n", access, id.Principal().Encode())
-
 	st, err := nns.LoadState(*statePath)
 	if err != nil {
 		return err
@@ -172,10 +162,23 @@ func apply(argv []string) error {
 
 	neuron := governance.NeuronId{Id: effNeuron}
 
+	// Phase order is nns.ApplyPhases(): the local dry-run runs before anything
+	// touches mainnet, so a payload can be verified without neuron permissions
+	// or network access to governance.
 	fmt.Printf("== Dry run on PocketIC (%s) ==\n", name)
-	if err := dryRun(action); err != nil {
+	if err := dryRun(action, *offline); err != nil {
 		return fmt.Errorf("dry run failed, not submitting: %w", err)
 	}
+
+	var accessOpts []nns.FetchOption
+	if fetchRootKey {
+		accessOpts = append(accessOpts, nns.DisableQueryVerification())
+	}
+	access, err := nns.CheckNeuronAccess(id, effHost, fetchRootKey, effNeuron, accessOpts...)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Neuron access: %s (%s)\n", access, id.Principal().Encode())
 
 	// Second, independent no-op gate: ApplyDecision above guards against
 	// resubmitting a recorded payload; this guards against submitting one that
@@ -636,10 +639,40 @@ func matchWord(same bool) string {
 	return "CHANGED"
 }
 
+// resolveDryRunArtifacts locates the pocket-ic binary and NNS wasms, fetching
+// them from the pinned IC release on first use. Env vars (a nix devShell, CI)
+// always win. The wasm paths are exported back to the environment because the
+// install path reads them from there.
+func resolveDryRunArtifacts(offline bool) (nns.Artifacts, error) {
+	art, err := nns.ResolveArtifacts(nns.BootstrapConfig{
+		Offline: offline,
+		Progress: func(what string, _ int64) {
+			fmt.Fprintf(os.Stderr, "fetching %s (%s), one time into the alpage cache...\n", what, nns.ICReleaseTag)
+		},
+	})
+	if err != nil {
+		return art, err
+	}
+	for k, v := range map[string]string{
+		"GOVERNANCE_WASM": art.GovernanceWASM,
+		"REGISTRY_WASM":   art.RegistryWASM,
+		"ROOT_WASM":       art.RootWASM,
+	} {
+		if err := os.Setenv(k, v); err != nil {
+			return art, err
+		}
+	}
+	return art, nil
+}
+
 // dryRun brings up a local NNS, submits the exact same action, and prints the
 // decoded result. Any error here aborts the real submission.
-func dryRun(action nns.Action) error {
-	c, err := pocketic.Start("")
+func dryRun(action nns.Action, offline bool) error {
+	art, err := resolveDryRunArtifacts(offline)
+	if err != nil {
+		return err
+	}
+	c, err := pocketic.Start(art.PocketIC)
 	if err != nil {
 		return err
 	}
