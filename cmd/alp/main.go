@@ -10,6 +10,12 @@
 //
 // apply always dry-runs first. If state already records a proposal id for the
 // name with a matching payload hash, apply refuses to resubmit unless --force.
+// A proposal recorded in a terminal state (executed/rejected/failed) is refused
+// outright, --force included: resubmitting means giving it a new name.
+//
+// status records each observed lifecycle state back into state.json, so list
+// can tell inert drift on a settled proposal from actionable drift on an open
+// one without going to the network.
 package main
 
 import (
@@ -87,7 +93,7 @@ func usage() error {
   alp plan   <name> [--host url]
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
   alp list
-  alp status [--host url]
+  alp status [--host url] [--no-record]
   alp reconcile [--host url]
   alp registry subnet <subnet_id> [--host url]
   alp version`)
@@ -319,14 +325,11 @@ func list(argv []string) error {
 			return err
 		}
 		entry, ok := st.Proposals[s.Name]
-		switch {
-		case !ok || entry.ProposalID == 0:
+		if !ok || entry.ProposalID == 0 {
 			fmt.Printf("%-24s  not submitted\n", s.Name)
-		case entry.PayloadSHA256 == hash:
-			fmt.Printf("%-24s  proposal %d  (in sync)\n", s.Name, entry.ProposalID)
-		default:
-			fmt.Printf("%-24s  proposal %d  (DRIFT: config payload changed since submit)\n", s.Name, entry.ProposalID)
+			continue
 		}
+		fmt.Println(nns.ListLine(s.Name, entry, hash))
 	}
 	return nil
 }
@@ -393,12 +396,16 @@ func plan(argv []string) error {
 
 // status reads each recorded proposal back from live governance and reports its
 // actual on-chain status (open/adopted/rejected/executed/failed), closing the
-// loop between what state says we submitted and what became of it. Read-only.
+// loop between what state says we submitted and what became of it. Observed
+// states are persisted back to the state file (--no-record to skip) so the
+// offline commands can reason about terminal proposals; the write is monotonic,
+// never clearing or overwriting a state already known to be terminal.
 func status(argv []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
 	statePath := fs.String("state", nns.DefaultStatePath, "path to the consolidated state file")
 	host := fs.String("host", "", "IC host to query (overrides provider block)")
+	noRecord := fs.Bool("no-record", false, "do not persist observed lifecycle state back to the state file")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -412,6 +419,7 @@ func status(argv []string) error {
 	}
 	effHost := resolveHost(cfg.Provider, *host)
 	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	changed := false
 	for _, s := range cfg.Proposals {
 		entry, ok := st.Proposals[s.Name]
 		if !ok || entry.ProposalID == 0 {
@@ -424,6 +432,15 @@ func status(argv []string) error {
 			continue
 		}
 		fmt.Println(nns.StatusLine(s.Name, entry, ps))
+		if ps != nil {
+			changed = st.RecordState(s.Name, ps.State, ps.ResolvedAt) || changed
+			changed = st.RecordSubmittedAt(s.Name, ps.SubmittedAt) || changed
+		}
+	}
+	if changed && !*noRecord {
+		if err := nns.SaveState(*statePath, st); err != nil {
+			return fmt.Errorf("record observed state: %w", err)
+		}
 	}
 	return nil
 }

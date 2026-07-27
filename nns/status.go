@@ -28,12 +28,23 @@ const DashboardAPI = "https://ic-api.internetcomputer.org/api/v3/proposals"
 // ProposalStatus is the normalized on-chain status of one proposal, from either
 // governance or the dashboard fallback.
 type ProposalStatus struct {
-	Source  Source
-	Label   string
-	Yes     uint64
-	No      uint64
-	Total   uint64 // total available voting power; Total-Yes-No did not vote
-	Failure string
+	Source Source
+	Label  string
+	// State is the normalized lifecycle state, persisted to state.json so
+	// offline commands can reason about terminal proposals.
+	State ProposalState
+	// ResolvedAt is when the proposal reached its terminal state on-chain
+	// (RFC3339), empty while it is still open. This is the chain's own
+	// timestamp, not when alp observed it.
+	ResolvedAt string
+	// SubmittedAt is when the proposal was created on-chain (RFC3339). The
+	// chain is authoritative for this, so it supersedes whatever was recorded
+	// locally at submit or import time.
+	SubmittedAt string
+	Yes         uint64
+	No          uint64
+	Total       uint64 // total available voting power; Total-Yes-No did not vote
+	Failure     string
 }
 
 // FetchProposalStatus resolves a recorded proposal's live status. It queries
@@ -74,7 +85,14 @@ func fetchProposalInfo(host string, fetchRootKey bool, id uint64) (*governance.P
 }
 
 func statusFromGovernance(info *governance.ProposalInfo) *ProposalStatus {
-	ps := &ProposalStatus{Source: SourceGovernance, Label: label(statusName, info.Status)}
+	state := stateFromGovernance(info.Status)
+	ps := &ProposalStatus{
+		Source:      SourceGovernance,
+		Label:       label(statusName, info.Status),
+		State:       state,
+		ResolvedAt:  resolutionTime(state, info.ExecutedTimestampSeconds, info.FailedTimestampSeconds, info.DecidedTimestampSeconds),
+		SubmittedAt: unixRFC3339(info.ProposalTimestampSeconds),
+	}
 	if t := info.LatestTally; t != nil {
 		ps.Yes, ps.No, ps.Total = t.Yes, t.No, t.Total
 	}
@@ -108,8 +126,12 @@ func fetchDashboardStatus(id uint64) (*ProposalStatus, error) {
 
 func parseDashboardStatus(body []byte) (*ProposalStatus, error) {
 	var d struct {
-		Status      string `json:"status"`
-		LatestTally *struct {
+		Status                   string `json:"status"`
+		ProposalTimestampSeconds uint64 `json:"proposal_timestamp_seconds"`
+		ExecutedTimestampSecond  uint64 `json:"executed_timestamp_seconds"`
+		FailedTimestampSeconds   uint64 `json:"failed_timestamp_seconds"`
+		DecidedTimestampSeconds  uint64 `json:"decided_timestamp_seconds"`
+		LatestTally              *struct {
 			Yes   uint64 `json:"yes"`
 			No    uint64 `json:"no"`
 			Total uint64 `json:"total"`
@@ -121,7 +143,14 @@ func parseDashboardStatus(body []byte) (*ProposalStatus, error) {
 	if err := json.Unmarshal(body, &d); err != nil {
 		return nil, fmt.Errorf("parse dashboard response: %w", err)
 	}
-	ps := &ProposalStatus{Source: SourceDashboard, Label: d.Status}
+	state := stateFromDashboard(d.Status)
+	ps := &ProposalStatus{
+		Source:      SourceDashboard,
+		Label:       d.Status,
+		State:       state,
+		ResolvedAt:  resolutionTime(state, d.ExecutedTimestampSecond, d.FailedTimestampSeconds, d.DecidedTimestampSeconds),
+		SubmittedAt: unixRFC3339(d.ProposalTimestampSeconds),
+	}
 	if d.LatestTally != nil {
 		ps.Yes, ps.No, ps.Total = d.LatestTally.Yes, d.LatestTally.No, d.LatestTally.Total
 	}

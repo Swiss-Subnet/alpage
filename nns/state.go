@@ -18,6 +18,15 @@ type Entry struct {
 	Neuron        uint64 `json:"neuron"`
 	Host          string `json:"host"`
 	SubmittedAt   string `json:"submitted_at"` // RFC3339
+	// Status is the proposal's lifecycle state as last observed on-chain,
+	// recorded by `alp status`. Empty means never observed. Once terminal it
+	// never changes, which is what lets `list` stay offline and still know that
+	// drift against this entry is inert.
+	Status ProposalState `json:"status,omitempty"`
+	// ResolvedAt is when the proposal reached its terminal state on-chain
+	// (RFC3339), taken from the chain's own timestamp rather than when alp
+	// happened to look.
+	ResolvedAt string `json:"resolved_at,omitempty"`
 }
 
 // State is the single consolidated state file (terraform.tfstate-style): one
@@ -121,10 +130,19 @@ const (
 // payload errors unless force, a zero proposal id is not a real prior. The
 // returned *Entry is the prior that drove the verdict (nil when none) so
 // callers report from it rather than recomputing the predicate.
+//
+// A proposal in a terminal state is refused outright, force included:
+// resubmitting under the same name would overwrite the record of what actually
+// happened on-chain. Resubmitting means giving the new proposal its own name.
 func (s *State) ApplyDecision(name, hash string, force bool) (ApplyOutcome, *Entry, error) {
 	prev, ok := s.Proposals[name]
 	if !ok || prev.ProposalID == 0 {
 		return ApplyProceed, nil, nil
+	}
+	if prev.Status.Terminal() {
+		return ApplyProceed, &prev, fmt.Errorf(
+			"proposal %d is %s and cannot be resubmitted under the same name; rename the proposal block to submit a new one",
+			prev.ProposalID, prev.Status)
 	}
 	if force {
 		return ApplyProceed, &prev, nil
@@ -133,6 +151,40 @@ func (s *State) ApplyDecision(name, hash string, force bool) (ApplyOutcome, *Ent
 		return ApplyNothingToDo, &prev, nil
 	}
 	return ApplyProceed, &prev, fmt.Errorf("state records proposal %d but the payload hash changed; refusing without --force", prev.ProposalID)
+}
+
+// RecordState updates a recorded proposal's observed lifecycle state, and
+// reports whether anything changed. Monotonic: a terminal state is never
+// overwritten, and an empty observation never clears a recorded one, so a
+// governance purge or a transient query cannot erase known history. resolvedAt
+// is the chain's own resolution timestamp and is recorded only for a terminal
+// state.
+func (s *State) RecordState(name string, st ProposalState, resolvedAt string) bool {
+	e, ok := s.Proposals[name]
+	if !ok || st == "" || e.Status == st || e.Status.Terminal() {
+		return false
+	}
+	e.Status = st
+	if st.Terminal() {
+		e.ResolvedAt = resolvedAt
+	}
+	s.Proposals[name] = e
+	return true
+}
+
+// RecordSubmittedAt corrects a recorded proposal's submission time from the
+// chain's own proposal timestamp, and reports whether anything changed. The
+// chain is authoritative here: whatever was recorded at submit or import time
+// was at best a local clock reading and at worst a hand-written placeholder. An
+// empty observation never clears a recorded value.
+func (s *State) RecordSubmittedAt(name, at string) bool {
+	e, ok := s.Proposals[name]
+	if !ok || at == "" || e.SubmittedAt == at {
+		return false
+	}
+	e.SubmittedAt = at
+	s.Proposals[name] = e
+	return true
 }
 
 func (s *State) Names() []string {
