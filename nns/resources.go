@@ -189,6 +189,13 @@ func loadResources(path string) (*Resources, error) {
 	if diags := gohcl.DecodeBody(body, ctx, &rf); diags.HasErrors() {
 		return nil, fmt.Errorf("decode resources: %s", diags.Error())
 	}
+	// Collisions are checked before anything consumes the resources: a repeated
+	// name would silently win in the eval context (last block parsed), and a
+	// repeated id would silently win in the label map, in both cases resolving
+	// references to a block the author did not mean.
+	if err := checkUnique(body); err != nil {
+		return nil, err
+	}
 	labels := map[string]string{}
 	addLabels(labels, rf.Nodes)
 	addLabels(labels, rf.Subnets)
@@ -205,6 +212,70 @@ func setVar[T namedResource](ctx *hcl.EvalContext, name string, rs []T) {
 	if v := objectsByName(rs); len(v) > 0 {
 		ctx.Variables[name] = cty.ObjectVal(v)
 	}
+}
+
+// resourceKinds are the block types carrying a name label, in the order they
+// are reported.
+var resourceKinds = []string{"subnet", "node", "node_provider", "node_operator", "data_center"}
+
+// checkUnique rejects a repeated name or id within a kind. It walks the merged
+// body rather than the decoded structs so each collision reports the file and
+// line of both blocks, which is what makes a collision spanning resources.hcl
+// and resources/*.hcl actionable. Ids are compared within a kind only: distinct
+// kinds may legitimately share a principal (a self-operated provider registers
+// the same id as operator and provider).
+func checkUnique(body hcl.Body) error {
+	schema := &hcl.BodySchema{}
+	for _, k := range resourceKinds {
+		schema.Blocks = append(schema.Blocks, hcl.BlockHeaderSchema{Type: k, LabelNames: []string{"name"}})
+	}
+	content, _, diags := body.PartialContent(schema)
+	if diags.HasErrors() {
+		return fmt.Errorf("scan resources: %s", diags.Error())
+	}
+	names := map[string]hcl.Range{} // "kind.name" -> first declaration
+	ids := map[string]hcl.Range{}   // "kind\x00id" -> first declaration
+	for _, b := range content.Blocks {
+		if len(b.Labels) == 0 {
+			continue
+		}
+		key := b.Type + "." + b.Labels[0]
+		if prev, ok := names[key]; ok {
+			return fmt.Errorf("duplicate %s %q: declared at %s and %s", b.Type, b.Labels[0], prev, b.DefRange)
+		}
+		names[key] = b.DefRange
+		id, err := blockID(b)
+		if err != nil || id == "" {
+			continue
+		}
+		idKey := b.Type + "\x00" + id
+		if prev, ok := ids[idKey]; ok {
+			return fmt.Errorf("duplicate %s id %q: declared at %s and %s", b.Type, id, prev, b.DefRange)
+		}
+		ids[idKey] = b.DefRange
+	}
+	return nil
+}
+
+// blockID reads a block's literal id attribute. Resource ids are string
+// literals, so this evaluates with a nil context; a non-literal or absent id
+// yields "" and is left to the main decode to accept or reject.
+func blockID(b *hcl.Block) (string, error) {
+	attrs, _, diags := b.Body.PartialContent(&hcl.BodySchema{
+		Attributes: []hcl.AttributeSchema{{Name: "id"}},
+	})
+	if diags.HasErrors() {
+		return "", fmt.Errorf("%s", diags.Error())
+	}
+	a, ok := attrs.Attributes["id"]
+	if !ok {
+		return "", nil
+	}
+	v, vdiags := a.Expr.Value(nil)
+	if vdiags.HasErrors() || v.Type() != cty.String || v.IsNull() {
+		return "", nil
+	}
+	return v.AsString(), nil
 }
 
 func addLabels[T namedResource](labels map[string]string, rs []T) {

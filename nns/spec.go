@@ -91,7 +91,15 @@ func LoadConfig(path string) (*Config, error) {
 	if diags := gohcl.DecodeBody(f.Body, evalCtx, &cfg); diags.HasErrors() {
 		return nil, fmt.Errorf("decode %s: %s", path, diags.Error())
 	}
+	// A proposal name keys into lifecycle state and is how LoadSpec selects one,
+	// so a duplicate would silently hide the second block behind the first.
+	seen := map[string]bool{}
 	for i := range cfg.Proposals {
+		name := cfg.Proposals[i].Name
+		if seen[name] {
+			return nil, fmt.Errorf("%s: duplicate proposal %q: declared more than once", path, name)
+		}
+		seen[name] = true
 		cfg.Proposals[i].evalCtx = evalCtx
 		if _, err := cfg.Proposals[i].Action(); err != nil {
 			return nil, err
