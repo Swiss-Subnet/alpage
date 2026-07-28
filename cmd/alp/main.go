@@ -25,6 +25,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aviate-labs/agent-go/principal"
@@ -467,7 +468,7 @@ func reconcile(argv []string) error {
 	nns.Color = nns.DetectColor()
 	effHost := resolveHost(cfg.Provider, *host)
 	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
-	if len(cfg.Resources.Subnets) == 0 && len(cfg.Resources.Providers) == 0 {
+	if len(cfg.Resources.Subnets) == 0 && len(cfg.Resources.Providers) == 0 && !anyDeclaredVersion(cfg.Resources) {
 		fmt.Println("no subnet or node_provider resources declared in resources.hcl")
 		return nil
 	}
@@ -515,6 +516,9 @@ func reconcile(argv []string) error {
 		nr.Render(&b)
 		drift = drift || nr.HasDrift()
 	}
+	vr := nns.ReconcileNodeVersions(cfg.Resources, nodeVersions(cfg.Resources))
+	vr.Render(&b)
+	drift = drift || vr.HasDrift()
 	fmt.Print(b.String())
 	if drift {
 		return fmt.Errorf("reconcile found drift between resources.hcl and on-chain state")
@@ -586,6 +590,73 @@ func nodeStatusForSubnet(r *nns.Resources, subnetID string, live []string) (map[
 		status[id] = s
 	}
 	return status, nil
+}
+
+func anyDeclaredVersion(r *nns.Resources) bool {
+	for _, n := range r.Nodes {
+		if n.GuestosVersion != "" && !n.Decommissioned {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeVersions reads the version each node declaring guestos_version reports
+// running. Two steps per node: its registry record for the http endpoint, then
+// the node's own /api/v2/status. Reads run concurrently because an unreachable
+// node costs a full timeout and there may be many.
+//
+// A failure is recorded on the row rather than returned: a node being down is
+// reported as unreachable, not treated as a fatal error. Reaching replicas needs
+// IPv6; without it every node reports unreachable.
+func nodeVersions(r *nns.Resources) map[string]nns.NodeVersion {
+	var want []nns.NodeRes
+	for _, n := range r.Nodes {
+		if n.GuestosVersion != "" && !n.Decommissioned {
+			want = append(want, n)
+		}
+	}
+	if len(want) == 0 {
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "reading version from %d node(s)...\n", len(want))
+	out := make(map[string]nns.NodeVersion, len(want))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 16)
+	for _, n := range want {
+		wg.Add(1)
+		go func(n nns.NodeRes) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			got := nns.NodeVersion{}
+			st, err := nns.FetchNodeStatus(nns.DefaultRegistryExplorer, n.ID)
+			switch {
+			case err != nil:
+				got.Err = err.Error()
+			case st.HttpIP == "":
+				got.Err = "registry record carries no http endpoint"
+			default:
+				v, err := nns.FetchNodeVersion(nns.NodeStatusURL(st.HttpIP, st.HttpPort))
+				if err == nil {
+					got.Version = v
+					break
+				}
+				// Unreachable directly (no IPv6 egress, or the node is down):
+				// fall back to the dashboard, which answers over IPv4.
+				got.Err = err.Error()
+				if v, derr := nns.FetchNodeVersionFromDashboard(nns.DefaultDashboardAPI, n.ID); derr == nil {
+					got.Version, got.Indirect, got.Err = v, true, ""
+				}
+			}
+			mu.Lock()
+			out[n.ID] = got
+			mu.Unlock()
+		}(n)
+	}
+	wg.Wait()
+	return out
 }
 
 // splitArgs separates the first n leading positional arguments from the rest,

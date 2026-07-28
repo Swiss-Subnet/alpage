@@ -57,6 +57,7 @@ A node, referenced from proposals as node.<name>.id.
 | `subnet` | attr | no | Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned. |
 | `operator` | attr | no | Id of its node operator (node_operator.<name>.id). |
 | `decommissioned` | attr | no | Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. |
+| `guestos_version` | attr | no | GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row "via dashboard" since that data may lag. Omitted means unchecked. |
 
 ## `proposals.hcl`
 

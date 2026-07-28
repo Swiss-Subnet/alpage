@@ -20,13 +20,20 @@ type nodeRecord struct {
 }
 
 type nodeRecordValue struct {
-	NodeOperatorID string `json:"node_operator_id"`
+	NodeOperatorID string          `json:"node_operator_id"`
+	Http           *nodeRecordAddr `json:"http"`
+}
+
+type nodeRecordAddr struct {
+	IPAddr string `json:"ip_addr"`
+	Port   uint32 `json:"port"`
 }
 
 // nodeRegistration reduces a node's record history to its current state: the
-// node is registered iff the highest-version entry carries a value; that
-// entry's operator id is returned. Pure; the caller supplies the records.
-func nodeRegistration(records []nodeRecord) (registered bool, operatorID string) {
+// node is registered iff the highest-version entry carries a value; that entry's
+// operator id and http endpoint are returned. Pure; the caller supplies the
+// records.
+func nodeRegistration(records []nodeRecord) (NodeStatus, bool) {
 	var latest *nodeRecord
 	for i := range records {
 		if latest == nil || records[i].Version > latest.Version {
@@ -34,15 +41,23 @@ func nodeRegistration(records []nodeRecord) (registered bool, operatorID string)
 		}
 	}
 	if latest == nil || latest.Value == nil {
-		return false, ""
+		return NodeStatus{}, false
 	}
-	return true, latest.Value.NodeOperatorID
+	st := NodeStatus{Registered: true, OperatorID: latest.Value.NodeOperatorID}
+	if h := latest.Value.Http; h != nil {
+		st.HttpIP, st.HttpPort = h.IPAddr, h.Port
+	}
+	return st, true
 }
 
 // NodeStatus is a node's current registry state.
 type NodeStatus struct {
 	Registered bool
 	OperatorID string
+	// HttpIP/HttpPort are the node's public http endpoint, used to read the
+	// version it reports running. Empty when the record carries no endpoint.
+	HttpIP   string
+	HttpPort uint32
 }
 
 // FetchNodeStatus reads a node's record history from the registry explorer HTTP
@@ -76,8 +91,8 @@ func FetchNodeStatus(explorerBase, nodeID string) (NodeStatus, error) {
 	if err := json.Unmarshal(body, &records); err != nil {
 		return NodeStatus{}, fmt.Errorf("decode node record %s: %w", nodeID, err)
 	}
-	reg, op := nodeRegistration(records)
-	return NodeStatus{Registered: reg, OperatorID: op}, nil
+	st, _ := nodeRegistration(records)
+	return st, nil
 }
 
 // FetchOperatorNodes returns the node ids the registry records as owned by an

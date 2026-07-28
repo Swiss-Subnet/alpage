@@ -38,12 +38,12 @@ func TestNodeRegistrationFromRecords(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			reg, opID := nodeRegistration(tc.records)
-			if reg != tc.wantReg {
-				t.Errorf("registered = %v, want %v", reg, tc.wantReg)
+			st, _ := nodeRegistration(tc.records)
+			if st.Registered != tc.wantReg {
+				t.Errorf("registered = %v, want %v", st.Registered, tc.wantReg)
 			}
-			if opID != tc.wantOp {
-				t.Errorf("operator = %q, want %q", opID, tc.wantOp)
+			if st.OperatorID != tc.wantOp {
+				t.Errorf("operator = %q, want %q", st.OperatorID, tc.wantOp)
 			}
 		})
 	}

@@ -80,6 +80,11 @@ type NodeRes struct {
 	// submitted with; reconcile expects it to be absent from the registry, and
 	// reports drift if it is still there.
 	Decommissioned bool `hcl:"decommissioned,optional"`
+	// GuestosVersion is the GuestOS/replica version this node is expected to be
+	// running. Unlike every other reconciled field this is not a registry fact:
+	// the registry stores a version per subnet, not per node, so it is read from
+	// the node's own /api/v2/status impl_version. Omitted means unchecked.
+	GuestosVersion string `hcl:"guestos_version,optional"`
 }
 
 func (s Subnet) name() string        { return s.Name }
