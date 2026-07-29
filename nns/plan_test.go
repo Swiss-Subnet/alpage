@@ -121,8 +121,15 @@ func TestResizePreflightNoOp(t *testing.T) {
 	}
 }
 
+// elected is the elected-version set as the explorer reports it; "newver" and
+// "abc123" are elected unless a test says otherwise.
+var elected = ElectedVersions{
+	IDs:    map[string]bool{"newver": true, "abc123": true},
+	Source: SourceExplorer,
+}
+
 func TestDeployGuestosPlanSameVersionIsNoOp(t *testing.T) {
-	pf := planDeployGuestos("abc123", "abc123")
+	pf := planDeployGuestos("abc123", "abc123", elected, nil)
 	if pf.Level != PreflightNoOp {
 		t.Errorf("deploying the version the subnet already runs is a no-op, got %v", pf.Level)
 	}
@@ -132,12 +139,75 @@ func TestDeployGuestosPlanSameVersionIsNoOp(t *testing.T) {
 }
 
 func TestDeployGuestosPlanNewVersionProceeds(t *testing.T) {
-	pf := planDeployGuestos("newver", "abc123")
+	pf := planDeployGuestos("newver", "abc123", elected, nil)
 	if pf.Level != PreflightClean {
 		t.Errorf("a different target version is a real upgrade, got %v", pf.Level)
 	}
 	if pf.Report == "" {
 		t.Error("expected a report showing current -> target")
+	}
+}
+
+func TestDeployGuestosPlanUnelectedBlocks(t *testing.T) {
+	// A target the NNS has not elected can never execute: refuse it.
+	pf := planDeployGuestos("typo0", "abc123", elected, nil)
+	if pf.Level != PreflightNoOp {
+		t.Errorf("an unelected target must be refused, got %v", pf.Level)
+	}
+	if !strings.Contains(pf.Report, "not elected") {
+		t.Errorf("report should say the version is not elected: %q", pf.Report)
+	}
+}
+
+func TestDeployGuestosPlanUnelectedNamesSource(t *testing.T) {
+	// The elected set is not a trustless read; the report must say where it came from.
+	pf := planDeployGuestos("typo0", "abc123", elected, nil)
+	if !strings.Contains(pf.Report, string(SourceExplorer)) {
+		t.Errorf("report must attribute the elected set to the explorer: %q", pf.Report)
+	}
+}
+
+func TestDeployGuestosPlanReportsRelease(t *testing.T) {
+	// When the dashboard resolves the target, plan names the release and the
+	// election proposal, attributed to the dashboard.
+	rel := &Release{
+		VersionID:  "newver",
+		Name:       "release-2026-07-23_04-21-base",
+		ProposalID: 143165,
+		Source:     SourceDashboard,
+	}
+	pf := planDeployGuestos("newver", "abc123", elected, rel)
+	for _, want := range []string{"release-2026-07-23_04-21-base", "143165", string(SourceDashboard)} {
+		if !strings.Contains(pf.Report, want) {
+			t.Errorf("report %q missing %q", pf.Report, want)
+		}
+	}
+}
+
+func TestDeployGuestosPlanConfirmsElected(t *testing.T) {
+	// The report must say the election was verified, not just stay silent.
+	pf := planDeployGuestos("newver", "abc123", elected, nil)
+	if !strings.Contains(pf.Report, "elected") {
+		t.Errorf("report should confirm the target is elected: %q", pf.Report)
+	}
+	if !strings.Contains(pf.Report, string(SourceExplorer)) {
+		t.Errorf("the confirmation must name its source: %q", pf.Report)
+	}
+}
+
+func TestDeployGuestosPlanUncheckedSaysNothing(t *testing.T) {
+	// No elected set and no override: nothing was checked, so claim nothing.
+	pf := planDeployGuestos("newver", "abc123", ElectedVersions{}, nil)
+	if strings.Contains(pf.Report, "elected") {
+		t.Errorf("an unchecked plan must not mention election: %q", pf.Report)
+	}
+}
+
+func TestDeployGuestosPlanWithoutReleaseStillReports(t *testing.T) {
+	// No release resolved: the version -> version line still renders.
+	pf := planDeployGuestos("newver", "abc123", elected, nil)
+	if !strings.Contains(pf.Report, "newver") {
+		t.Errorf("report should still name the target version: %q", pf.Report)
 	}
 }
 

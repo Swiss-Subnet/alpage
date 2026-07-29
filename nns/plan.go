@@ -113,12 +113,32 @@ func resizePreflight(p ResizePlan) Preflight {
 }
 
 // planDeployGuestos compares a deploy_guestos target version against the
-// subnet's current version. Matching versions change nothing.
-func planDeployGuestos(target, current string) Preflight {
+// subnet's current version, the elected-version set, and (optionally) the
+// release the dashboard resolved for the target. Matching versions change
+// nothing; an unelected target cannot execute at all, so it is refused with the
+// same level as a no-op. rel may be nil when the dashboard resolved no release.
+func planDeployGuestos(target, current string, elected ElectedVersions, rel *Release) Preflight {
 	if target == current {
 		return Preflight{fmt.Sprintf("subnet already runs replica version %s; deploy is a no-op\n", current), PreflightNoOp}
 	}
-	return Preflight{fmt.Sprintf("replica version %s -> %s\n", current, target), PreflightClean}
+	if elected.Known() && !elected.Elected(target) {
+		return Preflight{fmt.Sprintf(
+			"replica version %s is not elected [per %s]; the NNS would reject this deploy\n",
+			target, elected.Source), PreflightNoOp}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "replica version %s -> %s\n", current, target)
+	if rel != nil {
+		fmt.Fprintf(&b, "  target release: %s\n", rel.Describe())
+	}
+	if elected.Unverified {
+		fmt.Fprintf(&b, "  WARNING: election of %s not verified; the elected set was unreadable\n", target)
+		return Preflight{b.String(), PreflightWarn}
+	}
+	if elected.Known() {
+		fmt.Fprintf(&b, "  target is elected [per %s]\n", elected.Source)
+	}
+	return Preflight{b.String(), PreflightClean}
 }
 
 func (p ResizePlan) Render() string {

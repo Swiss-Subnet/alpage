@@ -57,7 +57,7 @@ A node, referenced from proposals as node.<name>.id.
 | `subnet` | attr | no | Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned. |
 | `operator` | attr | no | Id of its node operator (node_operator.<name>.id). |
 | `decommissioned` | attr | no | Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. |
-| `guestos_version` | attr | no | GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row "via dashboard" since that data may lag. Omitted means unchecked. |
+| `guestos_version` | attr | no | GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row "via dashboard" since that data may lag. Reconcile also checks the declared version against the NNS elected set and marks it "NOT ELECTED" if absent; when that source is unreadable the check is skipped rather than failing. Omitted means unchecked. |
 
 ## `proposals.hcl`
 
@@ -99,7 +99,7 @@ Nested in a proposal of kind "deploy_guestos": deploy_guestos_to_all_subnet_node
 | Field | Kind | Required | Description |
 |-------|------|----------|-------------|
 | `subnet_id` | attr | yes | Subnet whose nodes to upgrade (subnet.<name>.id). |
-| `replica_version_id` | attr | yes | Replica version to deploy to every node in the subnet. |
+| `replica_version_id` | attr | yes | Replica version to deploy to every node in the subnet. Must be elected by the NNS: preflight checks the registry for a replica_version_<id> record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. --force submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable. |
 
 ### `add / remove { }`
 

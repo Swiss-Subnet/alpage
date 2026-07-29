@@ -341,7 +341,13 @@ func list(argv []string) error {
 // planCheck runs the action's preflight against live state before submit. A
 // no-op result is refused unless force; warnings print but do not block.
 func planCheck(action nns.Action, host string, fetchRootKey, force bool) error {
-	pf, err := action.Preflight(host, fetchRootKey)
+	// --force also covers sources preflight could not read at all, so an
+	// explorer outage does not block a deploy outright.
+	var opts []nns.FetchOption
+	if force {
+		opts = append(opts, nns.AllowUnverifiedElection())
+	}
+	pf, err := action.Preflight(host, fetchRootKey, opts...)
 	if err != nil {
 		return fmt.Errorf("preflight: %w", err)
 	}
@@ -384,7 +390,9 @@ func plan(argv []string) error {
 	}
 	effHost := resolveHost(cfg.Provider, *host)
 	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
-	pf, err := action.Preflight(effHost, fetchRootKey)
+	// plan only reports, so it degrades rather than failing when a source is
+	// unreadable: the warning is more useful than no plan at all.
+	pf, err := action.Preflight(effHost, fetchRootKey, nns.AllowUnverifiedElection())
 	if err != nil {
 		return err
 	}
@@ -516,7 +524,7 @@ func reconcile(argv []string) error {
 		nr.Render(&b)
 		drift = drift || nr.HasDrift()
 	}
-	vr := nns.ReconcileNodeVersions(cfg.Resources, nodeVersions(cfg.Resources))
+	vr := nns.ReconcileNodeVersionsElected(cfg.Resources, nodeVersions(cfg.Resources), electedVersions(cfg.Resources))
 	vr.Render(&b)
 	drift = drift || vr.HasDrift()
 	fmt.Print(b.String())
@@ -590,6 +598,28 @@ func nodeStatusForSubnet(r *nns.Resources, subnetID string, live []string) (map[
 		status[id] = s
 	}
 	return status, nil
+}
+
+// electedVersions reads the NNS elected-version set for the reconcile report.
+// Unlike the deploy path, an unreadable source degrades to an unknown set
+// (flagging nothing) rather than failing: reconcile is a read-only report and
+// should still work when the explorer is down. The reason is noted on stderr.
+func electedVersions(r *nns.Resources) nns.ElectedVersions {
+	if !anyDeclaredVersion(r) {
+		return nns.ElectedVersions{}
+	}
+	var declared []string
+	for _, n := range r.Nodes {
+		if n.GuestosVersion != "" && !n.Decommissioned {
+			declared = append(declared, n.GuestosVersion)
+		}
+	}
+	el, err := nns.FetchElectedVersions(nns.DefaultRegistryExplorer, declared...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: elected versions unavailable (%v); skipping the elected check\n", err)
+		return nns.ElectedVersions{}
+	}
+	return el
 }
 
 func anyDeclaredVersion(r *nns.Resources) bool {

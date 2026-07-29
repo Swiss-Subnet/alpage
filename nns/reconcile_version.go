@@ -38,12 +38,18 @@ type NodeVersionRow struct {
 	Err      string
 	Status   NodeVersionStatus
 	Indirect bool
+	// Unelected marks a declared version the NNS has not elected. Informational
+	// rather than a status: the node may well be running it, but no proposal
+	// could deploy it, so the declaration is stale or wrong.
+	Unelected bool
 }
 
 // NodeVersionReconcile is the diff of declared node versions against what the
 // nodes report running.
 type NodeVersionReconcile struct {
 	Nodes []NodeVersionRow
+	// ElectedSource attributes the elected-version set when one was consulted.
+	ElectedSource Source
 }
 
 // ReconcileNodeVersions diffs each node's declared guestos_version against the
@@ -54,7 +60,17 @@ type NodeVersionReconcile struct {
 // skipped: they are expected to be gone, so an unreachable status endpoint is
 // the correct outcome rather than something to report.
 func ReconcileNodeVersions(r *Resources, reported map[string]NodeVersion) NodeVersionReconcile {
+	return ReconcileNodeVersionsElected(r, reported, ElectedVersions{})
+}
+
+// ReconcileNodeVersionsElected is ReconcileNodeVersions plus a check of each
+// declared version against the elected set. An unknown elected set (its source
+// was unreadable) flags nothing, so an outage never reads as mass drift.
+func ReconcileNodeVersionsElected(r *Resources, reported map[string]NodeVersion, elected ElectedVersions) NodeVersionReconcile {
 	var vr NodeVersionReconcile
+	if elected.Known() {
+		vr.ElectedSource = elected.Source
+	}
 	for _, n := range r.Nodes {
 		if n.GuestosVersion == "" || n.Decommissioned {
 			continue
@@ -63,7 +79,8 @@ func ReconcileNodeVersions(r *Resources, reported map[string]NodeVersion) NodeVe
 		row := NodeVersionRow{
 			NodeID: n.ID, Name: n.Name,
 			Declared: n.GuestosVersion, Actual: got.Version, Err: got.Err,
-			Indirect: got.Indirect && got.Version != "",
+			Indirect:  got.Indirect && got.Version != "",
+			Unelected: elected.Known() && !elected.Elected(n.GuestosVersion),
 		}
 		switch {
 		case got.Err != "" || got.Version == "":
@@ -99,7 +116,7 @@ func (vr NodeVersionReconcile) Render(b *strings.Builder) {
 			nameW = n
 		}
 	}
-	indirect := false
+	indirect, unelected := false, false
 	for _, row := range vr.Nodes {
 		detail := ""
 		switch row.Status {
@@ -114,12 +131,28 @@ func (vr NodeVersionReconcile) Render(b *strings.Builder) {
 			indirect = true
 			detail += " via dashboard"
 		}
+		if row.Unelected {
+			unelected = true
+			detail += colorize(" NOT ELECTED", ansiRed)
+		}
 		status := colorize(fmt.Sprintf("%-17s", row.Status), row.Status.color())
 		fmt.Fprintf(b, "  %s  %-*s  %s%s\n", status, nameW, versionRowName(row), row.NodeID, detail)
 	}
 	if indirect {
 		b.WriteString(colorize("  note: versions marked \"via dashboard\" were read from the public dashboard\n"+
 			"        because the node was unreachable; that data may lag the node's real state.\n", ansiYellow))
+	}
+	switch {
+	case unelected:
+		fmt.Fprintf(b, "%s", colorize(fmt.Sprintf(
+			"  note: versions marked \"NOT ELECTED\" are absent from the NNS elected set\n"+
+				"        [per %s]; no proposal can deploy them, so the declaration is stale.\n",
+			vr.ElectedSource), ansiYellow))
+	case vr.ElectedSource != "":
+		// State the check ran even when it passes: silence here would be
+		// indistinguishable from the elected set never having been read.
+		fmt.Fprintf(b, "%s", colorize(fmt.Sprintf(
+			"  all declared versions are elected [per %s]\n", vr.ElectedSource), ansiGreen))
 	}
 }
 

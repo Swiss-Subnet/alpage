@@ -99,7 +99,7 @@ var SchemaFieldDocs = map[string]string{
 	"NodeRes.subnet":          "Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned.",
 	"NodeRes.operator":        "Id of its node operator (node_operator.<name>.id).",
 	"NodeRes.decommissioned":  "Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry.",
-	"NodeRes.guestos_version": "GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row \"via dashboard\" since that data may lag. Omitted means unchecked.",
+	"NodeRes.guestos_version": "GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row \"via dashboard\" since that data may lag. Reconcile also checks the declared version against the NNS elected set and marks it \"NOT ELECTED\" if absent; when that source is unreadable the check is skipped rather than failing. Omitted means unchecked.",
 
 	"Provider.host":           "Governance host URL. Defaults per command; overridden by --host.",
 	"Provider.neuron":         "Proposer neuron id.",
@@ -115,7 +115,7 @@ var SchemaFieldDocs = map[string]string{
 	"resizeBody.remove":    "A node to remove from the subnet; repeatable. See the add / remove block.",
 
 	"deployGuestosBody.subnet_id":          "Subnet whose nodes to upgrade (subnet.<name>.id).",
-	"deployGuestosBody.replica_version_id": "Replica version to deploy to every node in the subnet.",
+	"deployGuestosBody.replica_version_id": "Replica version to deploy to every node in the subnet. Must be elected by the NNS: preflight checks the registry for a replica_version_<id> record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. --force submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable.",
 
 	"Node.id":    "Node id (node.<name>.id).",
 	"Node.label": "Optional human-readable name.",

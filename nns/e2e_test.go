@@ -1,7 +1,12 @@
 package nns
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"testing"
@@ -67,6 +72,38 @@ func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds
 		t.Cleanup(func() { _ = c.StopGateway(inst) })
 	}
 	return n, c, url
+}
+
+// stubSources serves the two third-party sources deploy_guestos preflight
+// consults: the registry explorer's replica_version_<id> records and the
+// dashboard's election-proposal list. Only the listed versions get a record; any
+// other lookup 404s, i.e. reads as unelected. Returns the options pointing
+// preflight at the stub.
+//
+// Without this a preflight in tests would reach the public internet, which both
+// fails without egress and answers about mainnet rather than the seeded state.
+func stubSources(t *testing.T, elected ...string) []FetchOption {
+	t.Helper()
+	isElected := make(map[string]bool, len(elected))
+	for _, v := range elected {
+		isElected[v] = true
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/records/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(path.Base(r.URL.Path), "replica_version_")
+		if !isElected[id] {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		fmt.Fprintf(w, `[{"key":"replica_version_%s","version":1,"value":"CIA="}]`, id)
+	})
+	// No elections: releases stay unresolved, which preflight tolerates.
+	mux.HandleFunc("/proposals", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"data":[]}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return []FetchOption{WithExplorer(srv.URL), WithDashboard(srv.URL + "/proposals")}
 }
 
 // resizeFixture loads the self-contained resize fixture (the live config lives
@@ -195,22 +232,35 @@ func TestPreflightAgainstSeededSubnet(t *testing.T) {
 	}
 
 	// deploy_guestos preflight over the same gateway: the seeded version is a
-	// no-op, a different one is a real upgrade.
+	// no-op, a different elected one is a real upgrade, an unelected one is
+	// refused. Both elected versions are stubbed to match the local registry.
+	const electedVersion = "0000000000000000000000000000000000000002"
+	src := stubSources(t, seededVersion, electedVersion)
+	deployOpts := append([]FetchOption{DisableQueryVerification()}, src...)
+
 	sameVer := DeployGuestosAction{SubnetID: subnetX, ReplicaVersionID: seededVersion}
-	pf, err = sameVer.Preflight(url, true, DisableQueryVerification())
+	pf, err = sameVer.Preflight(url, true, deployOpts...)
 	if err != nil {
 		t.Fatalf("deploy_guestos preflight (same version): %v", err)
 	}
 	if pf.Level != PreflightNoOp {
 		t.Errorf("deploying the seeded version should be NoOp, got %v\n%s", pf.Level, pf.Report)
 	}
-	newVer := DeployGuestosAction{SubnetID: subnetX, ReplicaVersionID: "0000000000000000000000000000000000000002"}
-	pf, err = newVer.Preflight(url, true, DisableQueryVerification())
+	newVer := DeployGuestosAction{SubnetID: subnetX, ReplicaVersionID: electedVersion}
+	pf, err = newVer.Preflight(url, true, deployOpts...)
 	if err != nil {
 		t.Fatalf("deploy_guestos preflight (new version): %v", err)
 	}
 	if pf.Level != PreflightClean {
-		t.Errorf("deploying a different version is a real upgrade (Clean), got %v\n%s", pf.Level, pf.Report)
+		t.Errorf("deploying a different elected version is a real upgrade (Clean), got %v\n%s", pf.Level, pf.Report)
+	}
+	unelected := DeployGuestosAction{SubnetID: subnetX, ReplicaVersionID: "000000000000000000000000000000000000dead"}
+	pf, err = unelected.Preflight(url, true, deployOpts...)
+	if err != nil {
+		t.Fatalf("deploy_guestos preflight (unelected): %v", err)
+	}
+	if pf.Level != PreflightNoOp {
+		t.Errorf("an unelected version must be refused, got %v\n%s", pf.Level, pf.Report)
 	}
 
 	// A subnet the registry does not know (nodeC is not a seeded subnet) must

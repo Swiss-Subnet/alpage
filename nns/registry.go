@@ -16,7 +16,50 @@ import (
 // FetchOption tunes how the read-only registry fetchers talk to the network.
 type FetchOption func(*fetchOpts)
 
-type fetchOpts struct{ disableQueryVerify bool }
+type fetchOpts struct {
+	disableQueryVerify bool
+	explorerBase       string
+	dashboardBase      string
+	allowUnverified    bool
+}
+
+// AllowUnverifiedElection lets deploy_guestos preflight proceed when the
+// elected-version set cannot be read, downgrading the hard failure to a
+// warning. For the case where the source is down and the deploy must go ahead;
+// the proposal may still be rejected by the NNS.
+func AllowUnverifiedElection() FetchOption {
+	return func(o *fetchOpts) { o.allowUnverified = true }
+}
+
+// explorer returns the registry explorer base to query, defaulting to the
+// public one.
+func (o fetchOpts) explorer() string {
+	if o.explorerBase != "" {
+		return o.explorerBase
+	}
+	return DefaultRegistryExplorer
+}
+
+// dashboard returns the dashboard proposals endpoint to query, defaulting to
+// the public one.
+func (o fetchOpts) dashboard() string {
+	if o.dashboardBase != "" {
+		return o.dashboardBase
+	}
+	return DashboardAPI
+}
+
+// WithExplorer overrides the registry explorer base URL. Tests point this at a
+// local stub so preflight does not reach the public internet.
+func WithExplorer(base string) FetchOption {
+	return func(o *fetchOpts) { o.explorerBase = base }
+}
+
+// WithDashboard overrides the dashboard proposals endpoint. Tests point this at
+// a local stub.
+func WithDashboard(base string) FetchOption {
+	return func(o *fetchOpts) { o.dashboardBase = base }
+}
 
 // DisableQueryVerification turns off signed-query verification. Only for tests
 // against a local replica (e.g. PocketIC), whose seeded nodes are not in the

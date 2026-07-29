@@ -57,6 +57,89 @@ func TestReconcileNodeVersionsClassifies(t *testing.T) {
 	}
 }
 
+func TestReconcileNodeVersionsFlagsUnelected(t *testing.T) {
+	// verB is not elected: a node running it is drift against the NNS even
+	// though it matches what the config declares.
+	r := &Resources{
+		Nodes: []NodeRes{
+			{Name: "elected", ID: "n-ok", GuestosVersion: verA},
+			{Name: "unelected", ID: "n-bad", GuestosVersion: verB},
+		},
+		labels: map[string]string{},
+	}
+	live := map[string]NodeVersion{
+		"n-ok":  {Version: verA},
+		"n-bad": {Version: verB},
+	}
+	el := ElectedVersions{IDs: map[string]bool{verA: true}, Source: SourceExplorer}
+	vr := ReconcileNodeVersionsElected(r, live, el)
+
+	got := map[string]bool{}
+	for _, row := range vr.Nodes {
+		got[row.NodeID] = row.Unelected
+	}
+	if got["n-ok"] {
+		t.Error("an elected version must not be flagged")
+	}
+	if !got["n-bad"] {
+		t.Error("a version the NNS has not elected must be flagged")
+	}
+	var b strings.Builder
+	vr.Render(&b)
+	if !strings.Contains(b.String(), string(SourceExplorer)) {
+		t.Errorf("render must attribute the elected set to its source: %q", b.String())
+	}
+}
+
+func TestRenderConfirmsElectedCheckPassed(t *testing.T) {
+	// A passing check must be visible: otherwise "all elected" is
+	// indistinguishable from the check never having run.
+	r := &Resources{
+		Nodes:  []NodeRes{{Name: "n", ID: "n-1", GuestosVersion: verA}},
+		labels: map[string]string{},
+	}
+	el := ElectedVersions{IDs: map[string]bool{verA: true}, Source: SourceExplorer}
+	var b strings.Builder
+	ReconcileNodeVersionsElected(r, map[string]NodeVersion{"n-1": {Version: verA}}, el).Render(&b)
+	out := b.String()
+	if !strings.Contains(out, "elected") {
+		t.Errorf("render should confirm the elected check passed: %q", out)
+	}
+	if !strings.Contains(out, string(SourceExplorer)) {
+		t.Errorf("the confirmation must name its source: %q", out)
+	}
+	if strings.Contains(out, "NOT ELECTED") {
+		t.Errorf("nothing should be flagged: %q", out)
+	}
+}
+
+func TestRenderSaysNothingWhenElectedUnchecked(t *testing.T) {
+	// No lookup ran, so the render must not claim anything about election.
+	r := &Resources{
+		Nodes:  []NodeRes{{Name: "n", ID: "n-1", GuestosVersion: verA}},
+		labels: map[string]string{},
+	}
+	var b strings.Builder
+	ReconcileNodeVersions(r, map[string]NodeVersion{"n-1": {Version: verA}}).Render(&b)
+	if strings.Contains(b.String(), "elected") {
+		t.Errorf("an unchecked run must not mention election: %q", b.String())
+	}
+}
+
+func TestReconcileNodeVersionsUnknownElectedSetFlagsNothing(t *testing.T) {
+	// An unread elected set must not mark every node unelected.
+	r := &Resources{
+		Nodes:  []NodeRes{{Name: "n", ID: "n-1", GuestosVersion: verA}},
+		labels: map[string]string{},
+	}
+	vr := ReconcileNodeVersionsElected(r, map[string]NodeVersion{"n-1": {Version: verA}}, ElectedVersions{})
+	for _, row := range vr.Nodes {
+		if row.Unelected {
+			t.Error("no node may be flagged when the elected set is unknown")
+		}
+	}
+}
+
 // An unreachable node is not version drift: it is a different failure, and
 // treating it as drift would make reconcile fail on any node that is merely down.
 func TestUnreachableNodeIsNotDrift(t *testing.T) {

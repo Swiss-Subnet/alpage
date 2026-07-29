@@ -155,13 +155,37 @@ func (d DeployGuestosAction) PayloadBlob() ([]byte, error) {
 }
 
 // Preflight checks the target replica version against the subnet's current
-// version in the registry: deploying the version it already runs is a no-op.
+// version in the registry: deploying the version it already runs is a no-op. It
+// also verifies the target is elected, and resolves its release for display.
+//
+// The current version is a trustless registry query. The elected set is not
+// (see ElectedVersions), and an unreadable elected set is a hard failure:
+// without it a deploy cannot be verified as executable. AllowUnverifiedElection
+// downgrades that to a warning for the case where the source is down and the
+// deploy has to go ahead anyway. The release lookup is display-only, so it
+// always degrades to a note rather than blocking an otherwise valid deploy.
 func (d DeployGuestosAction) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
 	current, err := FetchSubnetReplicaVersion(host, fetchRootKey, d.SubnetID, opts...)
 	if err != nil {
 		return Preflight{}, fmt.Errorf("fetch subnet replica version: %w", err)
 	}
-	return planDeployGuestos(d.ReplicaVersionID, current), nil
+	var o fetchOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+	elected, err := FetchElectedVersions(o.explorer(), d.ReplicaVersionID)
+	if err != nil {
+		if !o.allowUnverified {
+			return Preflight{}, fmt.Errorf("fetch elected versions: %w", err)
+		}
+		elected = ElectedVersions{Unverified: true}
+	}
+	rel, relErr := FetchRelease(o.dashboard(), d.ReplicaVersionID)
+	pf := planDeployGuestos(d.ReplicaVersionID, current, elected, rel)
+	if relErr != nil {
+		pf.Report += fmt.Sprintf("  release lookup unavailable: %v\n", relErr)
+	}
+	return pf, nil
 }
 
 func (d DeployGuestosAction) RenderPayload(b *strings.Builder, blob []byte) {
