@@ -14,8 +14,8 @@ import (
 // NNS function numbers from the governance proto, one per ExecuteNnsFunction
 // action we support.
 const (
+	nnsFunctionDeployGuestosToAllSubnetNodes int32 = 11
 	nnsFunctionChangeSubnetMembership        int32 = 31
-	nnsFunctionDeployGuestosToAllSubnetNodes int32 = 58
 )
 
 // Action is one kind of NNS proposal. The framework (config, state, dry-run,

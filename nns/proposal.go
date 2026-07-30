@@ -60,7 +60,7 @@ func (n *NNS) GetProposalInfo(id uint64) (*governance.ProposalInfo, error) {
 }
 
 // topicName / statusName render the numeric enums the way the NNS UI labels them.
-var topicName = map[int32]string{0: "Unspecified", 7: "SubnetManagement"}
+var topicName = map[int32]string{0: "Unspecified", 7: "SubnetManagement", 12: "IcOsVersionDeployment"}
 var statusName = map[int32]string{1: "Open", 2: "Rejected", 3: "Adopted", 4: "Executed", 5: "Failed"}
 
 // funcName / renderer map an NNS function number to its label and payload

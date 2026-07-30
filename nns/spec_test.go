@@ -101,6 +101,26 @@ func TestLoadDeployGuestosSpec(t *testing.T) {
 	}
 }
 
+// TestNnsFunctionNumbers pins the function numbers against the values in the
+// governance enum (rs/nns/governance/api/src/types.rs at the pinned release),
+// not against alpage's own constants: asserting a constant equals itself is
+// what let a wrong number survive. Update these literals only alongside a
+// verified change in the pinned IC release.
+func TestNnsFunctionNumbers(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  int32
+		want int32
+	}{
+		{"ChangeSubnetMembership", nnsFunctionChangeSubnetMembership, 31},
+		{"DeployGuestosToAllSubnetNodes", nnsFunctionDeployGuestosToAllSubnetNodes, 11},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
 func TestLoadSpecUnknownName(t *testing.T) {
 	if _, err := LoadSpec(testConfig, "does-not-exist"); err == nil {
 		t.Fatal("expected error for unknown proposal name")

@@ -163,6 +163,46 @@ func TestSubmitResizeFixture(t *testing.T) {
 	}
 }
 
+// TestSubmitDeployGuestosFixture submits a deploy_guestos through real
+// governance, which is the only check that alpage's NNS function number means
+// what alpage thinks it means: governance stores the number we send, so reading
+// the proposal back and finding it labelled deploy_guestos (rather than some
+// other function) is ground truth no in-repo constant can fake.
+func TestSubmitDeployGuestosFixture(t *testing.T) {
+	n := startNNS(t, principal.Principal{})
+	neuron := n.ProposerNeuron()
+
+	d := DeployGuestosAction{
+		Meta:             Meta{Title: "deploy guestos fixture", Summary: "e2e"},
+		SubnetID:         subnetX,
+		ReplicaVersionID: "0000000000000000000000000000000000000001",
+	}
+	pid, err := n.SubmitAs(n.Proposer, neuron, d)
+	if err != nil {
+		t.Fatalf("submit deploy_guestos: %v", err)
+	}
+	pi, err := n.GetProposalInfo(pid)
+	if err != nil {
+		t.Fatalf("get proposal info: %v", err)
+	}
+	rendered := RenderVerbose(pi)
+	t.Logf("\n%s", rendered)
+
+	for _, want := range []string{
+		"deploy_guestos_to_all_subnet_nodes",
+		d.ReplicaVersionID,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered proposal missing %q", want)
+		}
+	}
+	// The label comes from alpage's own funcName map, so it renders whatever we
+	// named the constant; only the number is governance's record of what we sent.
+	if !strings.Contains(rendered, "ExecuteNnsFunction #11") {
+		t.Errorf("expected nns function 11 in rendered proposal, got:\n%s", rendered)
+	}
+}
+
 func sortedEncode(ps []principal.Principal) []string {
 	out := make([]string, len(ps))
 	for i, p := range ps {
