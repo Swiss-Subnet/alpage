@@ -150,7 +150,8 @@
             export GOBIN="$TMPDIR/gobin"
             export PATH="$GOBIN:$PATH"
             go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2
-            ./generate.sh
+            # Run via bash, not the shebang: the sandbox has no /usr/bin/env.
+            bash ./generate.sh
           '';
           installPhase = "cp -r gen $out";
           outputHashMode = "recursive";
@@ -175,7 +176,7 @@
           IC_RELEASE_COMMIT = icReleaseCommit;
           buildPhase = ''
             export HOME="$TMPDIR"
-            ./generate-proto.sh
+            bash ./generate-proto.sh
           '';
           installPhase = "cp -r nns/pb $out";
           outputHashMode = "recursive";
