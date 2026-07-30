@@ -43,11 +43,14 @@
           }
           .${system};
 
+        # Keyed by nix system, but the release names the arm64 assets
+        # "arm64-*" (see pocketIcPlatform). Every entry moves on an IC release
+        # bump, not just the one this machine builds.
         pocketIcHashes = {
-          "x86_64-linux" = "sha256-0bY9iGMoHzBR2wT7LaMYXA1qvAvHTWgQQLijTFv34z8=";
-          "aarch64-linux" = "sha256-46ro8duQHXxjvUbHtbusIRr8ZJUicCS14Zim9vwHTAM=";
-          "x86_64-darwin" = "sha256-onS7d1aOTcbfD34HPmYqjhUf0wEOQfqF8eL5l9TjSmw=";
-          "aarch64-darwin" = "sha256-qRWTYxGxMRxAi2nsMBJVmQk62WTSbJhnUn5hz7NPmh8=";
+          "x86_64-linux" = "sha256-gXUoRe+PwDre/DjSKxXCCHJf3mnPrTMsH5i/+e6zK9o=";
+          "aarch64-linux" = "sha256-IWb4hqjaYqwHqkqVJ7Uc6giEMERIh56WR8joSqqJWzk=";
+          "x86_64-darwin" = "sha256-qnos63K+ppGqZmzx5YxbIGMQIXSMWQoUwJUQhfxXhWU=";
+          "aarch64-darwin" = "sha256-nAAoSlyJJJohul1pC1a68o5Y2hQtL/7xjdIUu5LTG74=";
         };
 
         # The release's canisters.tar carries only a 17-canister subset of the
