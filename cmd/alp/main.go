@@ -499,13 +499,13 @@ func reconcile(argv []string) error {
 		rc.Render(&b)
 		drift = drift || rc.HasDrift()
 
-		feat, err := nns.FetchSubnetFeatures(effHost, fetchRootKey, subnetID)
+		facts, err := nns.FetchSubnetRecordFacts(effHost, fetchRootKey, subnetID)
 		if err != nil {
 			return fmt.Errorf("subnet %q: %w", sn.Name, err)
 		}
-		fr := nns.ReconcileSubnetFeatures(sn, feat)
-		fr.Render(&b)
-		drift = drift || fr.HasDrift()
+		rr := nns.ReconcileSubnetRecord(sn, facts)
+		rr.Render(&b)
+		drift = drift || rr.HasDrift()
 	}
 	if len(cfg.Resources.Providers) > 0 {
 		byProvider, err := providerOperators(cfg.Resources, effHost, fetchRootKey)

@@ -3,6 +3,7 @@ package nns
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -95,6 +96,40 @@ func TestReconcileSubnetAdminsAbsentAssertsNone(t *testing.T) {
 	}
 	if len(rs.Admins.Unexpected) != len(testEngineAdmins) {
 		t.Errorf("want all %d live admins unexpected, got %+v", len(testEngineAdmins), rs.Admins.Unexpected)
+	}
+}
+
+// Every reconciled field must reach the rendered output, and drift in any one of
+// them must set HasDrift: a field that reconciles but is never rendered (or
+// never counted) is silently unreconciled, which is how these fields sat unwired
+// behind the CLI.
+func TestReconcileSubnetRecordRendersEveryField(t *testing.T) {
+	live := liveEngine()
+	live.CostSchedule = CostScheduleNormal
+	live.Features = SubnetFeatures{SevEnabled: new(true)}
+	sn := Subnet{Name: "engine", ID: testEngineID, Type: SubnetTypeCloudEngine}
+
+	rs := ReconcileSubnetRecord(sn, live)
+	var b strings.Builder
+	rs.Render(&b)
+	out := b.String()
+	for _, want := range []string{"type", "cost_schedule", "sev_enabled", "admins"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered output omits %q:\n%s", want, out)
+		}
+	}
+	// Each of these drifts independently; all must be reflected in HasDrift.
+	for _, tc := range []struct {
+		name string
+		rs   SubnetRecordReconcile
+	}{
+		{"cost_schedule", SubnetRecordReconcile{CostSchedule: rs.CostSchedule}},
+		{"sev_enabled", SubnetRecordReconcile{Features: rs.Features}},
+		{"admins", SubnetRecordReconcile{Admins: rs.Admins}},
+	} {
+		if !tc.rs.HasDrift() {
+			t.Errorf("%s drift is not counted by HasDrift", tc.name)
+		}
 	}
 }
 

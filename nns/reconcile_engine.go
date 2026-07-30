@@ -70,6 +70,7 @@ type SubnetRecordFacts struct {
 	Type         string
 	CostSchedule string
 	Admins       []string
+	Features     SubnetFeatures
 }
 
 // AdminsReconcile is the diff of a subnet's declared admins against the live
@@ -88,6 +89,7 @@ type SubnetRecordReconcile struct {
 	Type         FeatureReconcile
 	CostSchedule FeatureReconcile
 	Admins       AdminsReconcile
+	Features     FeatureReconcile
 }
 
 // DeclaredType is the subnet's declared type, defaulting to application.
@@ -163,6 +165,7 @@ func ReconcileSubnetRecord(sn Subnet, live SubnetRecordFacts) SubnetRecordReconc
 		Type:         compareField(sn.ID, "type", sn.DeclaredType(), liveType),
 		CostSchedule: compareField(sn.ID, "cost_schedule", sn.DeclaredCostSchedule(), liveSched),
 		Admins:       reconcileAdmins(sn.Admins, live.Admins),
+		Features:     ReconcileSubnetFeatures(sn, live.Features),
 	}
 }
 
@@ -214,13 +217,15 @@ func reconcileAdmins(declared, live []string) AdminsReconcile {
 // HasDrift reports whether any declared record field disagrees with the live
 // record.
 func (rs SubnetRecordReconcile) HasDrift() bool {
-	return rs.Type.HasDrift() || rs.CostSchedule.HasDrift() || rs.Admins.Status == FeatureMismatch
+	return rs.Type.HasDrift() || rs.CostSchedule.HasDrift() ||
+		rs.Admins.Status == FeatureMismatch || rs.Features.HasDrift()
 }
 
 // Render writes one line per record field, matching the subnet-feature layout.
 func (rs SubnetRecordReconcile) Render(b *strings.Builder) {
 	rs.Type.Render(b)
 	rs.CostSchedule.Render(b)
+	rs.Features.Render(b)
 	rs.Admins.render(b)
 }
 
