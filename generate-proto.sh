@@ -47,7 +47,10 @@ for entry in "${protos[@]}"; do
   read -r prefix p <<<"$entry"
   names+=("$p")
   mkdir -p "$src/$(dirname "$p")"
-  curl -sfL -o "$src/$p" "$raw/$prefix/$p" || { echo "fetch failed: $prefix/$p"; exit 1; }
+  # raw.githubusercontent.com rate-limits unauthenticated requests, and this
+  # loop makes one per proto, so retry rather than failing the build on a blip.
+  curl -sfL --retry 5 --retry-delay 2 --retry-all-errors \
+    -o "$src/$p" "$raw/$prefix/$p" || { echo "fetch failed: $prefix/$p"; exit 1; }
 done
 
 # One Go package per proto package. The registry protos can share a package

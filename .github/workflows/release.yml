@@ -39,20 +39,13 @@ jobs:
       - name: Warm devShell
         run: nix develop --command true
 
-      # gen/ and nns/pb/ are not committed; regenerate from the pinned
-      # release before building, same as CI.
-      - name: Generate bindings
+      # Cached fixed-output derivations, same as CI.
+      - name: Generate code
         run: |
-          nix develop --command bash -c '
-            set -euo pipefail
-            export GOBIN="$PWD/.gobin"
-            go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2
-            export PATH="$GOBIN:$PATH"
-            ./generate.sh
-          '
-
-      - name: Generate registry protobuf
-        run: nix develop --command ./generate-proto.sh
+          set -euo pipefail
+          cp -r "$(nix build --no-link --print-out-paths .#genBindings)" gen
+          cp -r "$(nix build --no-link --print-out-paths .#genProto)" nns/pb
+          chmod -R u+w gen nns/pb
 
       # Cross-compile alp for each target with the tag injected into main.version.
       # CGO is off so the binaries are static and cross-compilation needs no C

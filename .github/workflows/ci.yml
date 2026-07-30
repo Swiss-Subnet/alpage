@@ -47,25 +47,15 @@ jobs:
       - name: Warm devShell
         run: nix develop --command true
 
-      # gen/ (candid bindings) is not committed; regenerate it from the pinned
-      # release before anything compiles. goic is installed into a known bin dir
-      # and put on PATH so generate.sh finds it regardless of the devShell's
-      # default GOPATH/GOBIN.
-      - name: Generate bindings
+      # gen/ and nns/pb are not committed. Both are fixed-output derivations, so
+      # building them through nix reuses the cached store path instead of
+      # re-running the generator (no goic install, no proto fetches).
+      - name: Generate code
         run: |
-          nix develop --command bash -c '
-            set -euo pipefail
-            export GOBIN="$PWD/.gobin"
-            go install github.com/aviate-labs/agent-go/cmd/goic@v0.9.2
-            export PATH="$GOBIN:$PATH"
-            ./generate.sh
-          '
-
-      # nns/pb (registry types for seeding test subnets, plus the governance
-      # NnsFunction enum) is not committed; regenerate it from the same pinned
-      # release before compiling.
-      - name: Generate IC protobuf
-        run: nix develop --command ./generate-proto.sh
+          set -euo pipefail
+          cp -r "$(nix build --no-link --print-out-paths .#genBindings)" gen
+          cp -r "$(nix build --no-link --print-out-paths .#genProto)" nns/pb
+          chmod -R u+w gen nns/pb
 
       - name: Build
         run: nix develop --command go build ./...
