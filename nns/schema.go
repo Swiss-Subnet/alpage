@@ -78,9 +78,12 @@ var SchemaBlocks = []SchemaBlock{
 // requires an entry for every non-label field on a documented struct; a missing
 // entry (or an entry for a field that no longer exists) fails generation.
 var SchemaFieldDocs = map[string]string{
-	"Subnet.id":          "Principal of the subnet.",
-	"Subnet.label":       "Human-readable name.",
-	"Subnet.sev_enabled": "Whether the subnet runs with SEV-SNP enabled, reconciled against the registry's features.sev_enabled. Omitted means false.",
+	"Subnet.id":            "Principal of the subnet.",
+	"Subnet.label":         "Human-readable name.",
+	"Subnet.sev_enabled":   "Whether the subnet runs with SEV-SNP enabled, reconciled against the registry's features.sev_enabled. Omitted means false.",
+	"Subnet.type":          "Subnet type: application, verified_application, system, or cloud_engine. Omitted means application.",
+	"Subnet.cost_schedule": "Canister cycles cost schedule: normal or free. Omitted means free for a cloud_engine, which the registry requires, and normal otherwise.",
+	"Subnet.admins":        "Principals with admin rights on the subnet (subnet_admins). Allowed only on a cloud_engine or a rented subnet (application on the free schedule), at most 10. Declaring none asserts none, so an admin added on-chain is drift. Order is not significant.",
 
 	"DataCenter.id":     "Registry data center id.",
 	"DataCenter.label":  "Human-readable name.",

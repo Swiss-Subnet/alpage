@@ -15,6 +15,9 @@ A subnet, referenced from proposals and nodes as subnet.<name>.id.
 | `id` | attr | yes | Principal of the subnet. |
 | `label` | attr | no | Human-readable name. |
 | `sev_enabled` | attr | no | Whether the subnet runs with SEV-SNP enabled, reconciled against the registry's features.sev_enabled. Omitted means false. |
+| `type` | attr | no | Subnet type: application, verified_application, system, or cloud_engine. Omitted means application. |
+| `cost_schedule` | attr | no | Canister cycles cost schedule: normal or free. Omitted means free for a cloud_engine, which the registry requires, and normal otherwise. |
+| `admins` | attr | no | Principals with admin rights on the subnet (subnet_admins). Allowed only on a cloud_engine or a rented subnet (application on the free schedule), at most 10. Declaring none asserts none, so an admin added on-chain is drift. Order is not significant. |
 
 ### `data_center "<name>" { }`
 

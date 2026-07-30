@@ -60,6 +60,11 @@ jobs:
       # platforms); the flake's packages.alp is the reproducible host build for
       # `nix build` / `nix run`. Both share the purego tag (see flake.nix) so the
       # gnark-crypto asm include problem does not bite either path.
+      #
+      # Each platform ships twice: a .tar.gz carrying the binary alongside the
+      # licence texts and docs (so a BUSL-licensed binary never travels without
+      # its terms), and the bare binary for `curl | chmod +x` installs. Both are
+      # checksummed.
       - name: Build release binaries
         run: |
           nix develop --command bash -c '
@@ -68,23 +73,54 @@ jobs:
             mkdir -p dist
             for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
               GOOS="${target%/*}"; GOARCH="${target#*/}"
-              out="dist/alp-${TAG}-${GOOS}-${GOARCH}"
+              name="alp-${TAG}-${GOOS}-${GOARCH}"
               CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
                 go build -tags purego -trimpath -ldflags "-s -w -X main.version=${TAG}" \
-                -o "$out" ./cmd/alp
-              (cd dist && sha256sum "$(basename "$out")" > "$(basename "$out").sha256")
+                -o "dist/${name}" ./cmd/alp
+
+              # Staged under the tarball name so it unpacks into its own directory.
+              stage="$(mktemp -d)/${name}"
+              mkdir -p "$stage/docs"
+              cp "dist/${name}" "$stage/alp"
+              cp LICENSE NOTICE THIRD_PARTY_LICENSES CHANGELOG.md "$stage/"
+              cp docs/config.md docs/licensing.md "$stage/docs/"
+              tar -czf "dist/${name}.tar.gz" -C "$(dirname "$stage")" "${name}"
+
+              (cd dist && sha256sum "${name}" > "${name}.sha256")
+              (cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256")
             done
           '
+
+      # Notes are the tag's CHANGELOG.md section followed by the licensing block.
+      # A tag with no section fails the release rather than publishing empty
+      # notes.
+      - name: Build release notes
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          version="${GITHUB_REF_NAME#v}"
+          # Everything between this version's heading and the next one. Written
+          # outside dist/ so it is not picked up as a release asset.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/      { exit }
+            found                  { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/section.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/section.md"; then
+            echo "::error::CHANGELOG.md has no section for [$version]; add one before tagging"
+            exit 1
+          fi
+          cp "$RUNNER_TEMP/section.md" dist/RELEASE_NOTES.md
 
       # BUSL-1.1 sets the Change Date per version, four years after that version
       # is published. Record both dates in the release notes so each version's
       # clock is auditable from the release itself.
-      - name: Build license notes
+      - name: Append license notes
         run: |
           set -euo pipefail
           published="$(date -u +%Y-%m-%d)"
           change="$(date -u -d '+4 years' +%Y-%m-%d)"
-          cat > dist/RELEASE_NOTES.md <<EOF
+          cat >> dist/RELEASE_NOTES.md <<EOF
           ## Licensing
 
           Alpage is (c) 2026 Swiss Subnet AG and licensed under the Business
@@ -101,10 +137,20 @@ jobs:
           EOF
           cat dist/RELEASE_NOTES.md
 
+      # Assets are listed explicitly rather than globbed, so a stray file in
+      # dist/ cannot become a release artifact. --notes-file supplies the
+      # changelog section and licensing block; --generate-notes appends the
+      # commit list below them.
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            $(ls dist/* | grep -v RELEASE_NOTES.md) \
+          set -euo pipefail
+          assets=()
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            name="alp-${GITHUB_REF_NAME}-${target%/*}-${target#*/}"
+            assets+=("dist/${name}" "dist/${name}.sha256")
+            assets+=("dist/${name}.tar.gz" "dist/${name}.tar.gz.sha256")
+          done
+          gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
             --generate-notes --notes-file dist/RELEASE_NOTES.md --verify-tag
