@@ -17,23 +17,22 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        icReleaseTag = "release-2026-07-09_04-35-base";
-        icReleaseCommit = "992628c4f26cc7320396b6b8be37133a666a4386";
+        icReleaseTag = "release-2026-07-23_04-21-base";
+        icReleaseCommit = "1153c70d98a51ec2f023be9b3ce1d50c6b67da21";
 
-        icCanistersTarHash = "sha256-MrUXCUV08zIf/mHkA84fizuCp0BlU81AogEAxdFuapM=";
+        icCanistersTarHash = "sha256-PQdMyVOf6AGKssz7FsGUnOnvVooaCEkdGwj10sQ5NAQ=";
 
         # alp version: a git tag when building a tagged rev, else the short rev,
         # else "dev" for a dirty tree. Injected into main.version by the alp
         # package's ldflags.
-        alpVersion =
-          self.ref or (if self ? shortRev then "g${self.shortRev}" else "dev");
+        alpVersion = self.ref or (if self ? shortRev then "g${self.shortRev}" else "dev");
 
         # Fixed-output hashes for the codegen derivations and the Go vendor tree.
         # Set to fakeHash and run `nix build` to learn the real values, then
         # paste them back. Rehash when the IC release (flake pins) or deps move.
-        genBindingsHash = "sha256-axdmDqj9SYBeSXoGPKJL5p76gWEAEBHjjOGmuQvF88g=";
-        genProtoHash = "sha256-u0RMTWaPFBQd/a7D/pGS8Rxr3wjDfO9wELagbZp8QDM=";
-        alpVendorHash = "sha256-/u2ndj9qCkzR1RYOWJWhxOCmRR64VsPVUl/a3OPzP7U=";
+        genBindingsHash = "sha256-GNH1zK9sjdyHupYWMQ9nCOfkqtqd9sk6xM4MckWcvsY=";
+        genProtoHash = "sha256-6Yok/4Z7/fhG1acsvBjIwcERqjj8jCWj7c3R2bedeWc=";
+        alpVendorHash = "sha256-v/XCV+RQTqPNDHcK2tcj8G2kMIv4R22cqkSTaLWmIIQ=";
 
         pocketIcPlatform =
           {
@@ -51,6 +50,43 @@
           "aarch64-darwin" = "sha256-qRWTYxGxMRxAi2nsMBJVmQk62WTSbJhnUn5hz7NPmh8=";
         };
 
+        # The release's canisters.tar carries only a 17-canister subset of the
+        # full published set (see the CANISTERS array in the ic repo's
+        # .github/workflows/tag-release.yml). Canisters outside that subset are
+        # still published per-commit to the CDN, so fetch them individually and
+        # merge them into the same directory.
+        cdnCanisters = {
+          "engine-controller-canister" = {
+            wasm = "sha256-ruuXPRVe6wQKTXqgPaXT+r9lhGissoHjFkWhSWLz9I8=";
+            did = "sha256-5EsaF3//XyQ94WSzOxs+0hoDs5eNtMUo0Kwxgq1JUuE=";
+          };
+        };
+
+        cdnCanisterFiles = pkgs.lib.concatLists (
+          pkgs.lib.mapAttrsToList (
+            name: hashes:
+            map
+              (ext: {
+                inherit name;
+                filename = "${name}.wasm.gz${ext.suffix}";
+                file = pkgs.fetchurl {
+                  url = "https://download.dfinity.systems/ic/${icReleaseCommit}/canisters/${name}.wasm.gz${ext.suffix}";
+                  hash = ext.hash;
+                };
+              })
+              [
+                {
+                  suffix = "";
+                  hash = hashes.wasm;
+                }
+                {
+                  suffix = ".did";
+                  hash = hashes.did;
+                }
+              ]
+          ) cdnCanisters
+        );
+
         icCanisters = pkgs.stdenv.mkDerivation {
           pname = "ic-canisters";
           version = icReleaseTag;
@@ -63,7 +99,10 @@
           installPhase = ''
             mkdir -p $out
             cp *.wasm.gz *.did $out/
-          '';
+          ''
+          + pkgs.lib.concatMapStrings (c: ''
+            cp ${c.file} $out/${c.filename}
+          '') cdnCanisterFiles;
         };
 
         pocketIc = pkgs.stdenv.mkDerivation {
@@ -116,9 +155,9 @@
           outputHash = genBindingsHash;
         };
 
-        # Registry protobuf types (nns/registrypb/) are generated from .proto
-        # files fetched from the pinned IC commit over the network, so this is
-        # also a fixed-output derivation. protoc/protoc-gen-go come from nixpkgs.
+        # IC protobuf types (nns/pb/) are generated from .proto files fetched from
+        # the pinned IC commit over the network, so this is also a fixed-output
+        # derivation. protoc/protoc-gen-go come from nixpkgs.
         genProto = pkgs.stdenv.mkDerivation {
           pname = "alpage-gen-proto";
           version = icReleaseTag;
@@ -135,7 +174,7 @@
             export HOME="$TMPDIR"
             ./generate-proto.sh
           '';
-          installPhase = "cp -r nns/registrypb $out";
+          installPhase = "cp -r nns/pb $out";
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
           outputHash = genProtoHash;
@@ -149,8 +188,8 @@
           # Drop in the generated code the offline build cannot produce itself.
           preBuild = ''
             cp -r ${genBindings} gen
-            cp -r ${genProto} nns/registrypb
-            chmod -R u+w gen nns/registrypb
+            cp -r ${genProto} nns/pb
+            chmod -R u+w gen nns/pb
           '';
           subPackages = [ "cmd/alp" ];
           # gnark-crypto (via agent-go) ships arm64/amd64 asm that #includes

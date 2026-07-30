@@ -43,6 +43,9 @@ echo "generating bindings from $IC_CANISTERS_DIR"
 gen governance governance-canister_test.wasm.gz.did rrkah-fqaaa-aaaaa-aaaaq-cai
 gen registry   registry-canister.wasm.gz.did        rwlgt-iiaaa-aaaaa-aaaaa-cai
 gen root       root-canister.wasm.gz.did             r7inp-6aaaa-aaaaa-aaabq-cai
+# Engine controller: NNS subnet index 18 (ENGINE_CONTROLLER_CANISTER_INDEX_IN_NNS_SUBNET).
+# Its did comes from the CDN, not canisters.tar (see cdnCanisters in flake.nix).
+gen engine     engine-controller-canister.wasm.gz.did si2b5-pyaaa-aaaaa-aaaja-cai
 
 gofmt -w "$outroot"
 echo "done"

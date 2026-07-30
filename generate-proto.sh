@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regenerate the registry protobuf types used to seed a subnet into a local
-# PocketIC registry for tests.
+# Regenerate the IC protobuf types: the registry types used to seed a subnet
+# into a local PocketIC registry for tests, and the governance NnsFunction enum
+# the proposal actions dispatch on.
 #
 # The .proto sources are NOT committed: they are fetched from the same pinned IC
 # release commit the flake uses for the WASMs (IC_RELEASE_COMMIT), so the
@@ -16,49 +17,70 @@ command -v protoc >/dev/null || { echo "protoc not found; run inside 'nix develo
 command -v protoc-gen-go >/dev/null || { echo "protoc-gen-go not found; run inside 'nix develop'"; exit 1; }
 
 root="$(cd "$(dirname "$0")" && pwd)"
-outdir="$root/nns/registrypb"
-base="https://raw.githubusercontent.com/dfinity/ic/${IC_RELEASE_COMMIT}/rs/protobuf/def"
+raw="https://raw.githubusercontent.com/dfinity/ic/${IC_RELEASE_COMMIT}"
 
-# subnet.proto (SubnetRecord, SubnetListRecord) and its transitive imports.
-# Paths mirror the upstream proto_path layout so imports resolve unchanged.
+# subnet.proto (SubnetRecord, SubnetListRecord) and governance.proto (the
+# NnsFunction enum), plus their transitive imports. Each entry is
+# "<repo proto root> <path under it>": the protos live under several crates'
+# own proto/ dirs, and the path under each root is what imports resolve
+# against, so it doubles as the proto_path-relative name.
 protos=(
-  "registry/subnet/v1/subnet.proto"
-  "registry/crypto/v1/crypto.proto"
-  "registry/replica_version/v1/replica_version.proto"
-  "registry/node/v1/node.proto"
-  "registry/node_operator/v1/node_operator.proto"
-  "registry/dc/v1/dc.proto"
-  "types/v1/types.proto"
+  "rs/protobuf/def registry/subnet/v1/subnet.proto"
+  "rs/protobuf/def registry/crypto/v1/crypto.proto"
+  "rs/protobuf/def registry/replica_version/v1/replica_version.proto"
+  "rs/protobuf/def registry/node/v1/node.proto"
+  "rs/protobuf/def registry/node_operator/v1/node_operator.proto"
+  "rs/protobuf/def registry/dc/v1/dc.proto"
+  "rs/protobuf/def types/v1/types.proto"
+  "rs/nns/governance/proto ic_nns_governance/pb/v1/governance.proto"
+  "rs/types/base_types/proto ic_base_types/pb/v1/types.proto"
+  "rs/ledger_suite/icp/proto ic_ledger/pb/v1/types.proto"
+  "rs/nervous_system/proto/proto ic_nervous_system/pb/v1/nervous_system.proto"
+  "rs/nns/common/proto ic_nns_common/pb/v1/types.proto"
+  "rs/sns/swap/proto ic_sns_swap/pb/v1/swap.proto"
 )
 
 src="$(mktemp -d)"
 trap 'rm -rf "$src"' EXIT
-for p in "${protos[@]}"; do
+names=()
+for entry in "${protos[@]}"; do
+  read -r prefix p <<<"$entry"
+  names+=("$p")
   mkdir -p "$src/$(dirname "$p")"
-  curl -sfL -o "$src/$p" "$base/$p" || { echo "fetch failed: $p"; exit 1; }
+  curl -sfL -o "$src/$p" "$raw/$prefix/$p" || { echo "fetch failed: $prefix/$p"; exit 1; }
 done
 
-rm -rf "$outdir"
-mkdir -p "$outdir"
+# One Go package per proto package. The registry protos can share a package
+# (no colliding type names), but governance's imports cannot join it or each
+# other: several declare their own Tokens/Account/GovernanceError, and two are
+# both named types.proto. protoc's module= mode writes each file to the
+# directory its M-mapping names, so all packages come out of one invocation.
+mod="github.com/swiss-subnet/alpage/nns/pb"
+maps=(
+  "--go_opt=Mregistry/subnet/v1/subnet.proto=$mod/registry"
+  "--go_opt=Mregistry/crypto/v1/crypto.proto=$mod/registry"
+  "--go_opt=Mregistry/replica_version/v1/replica_version.proto=$mod/registry"
+  "--go_opt=Mregistry/node/v1/node.proto=$mod/registry"
+  "--go_opt=Mregistry/node_operator/v1/node_operator.proto=$mod/registry"
+  "--go_opt=Mregistry/dc/v1/dc.proto=$mod/registry"
+  "--go_opt=Mtypes/v1/types.proto=$mod/registry"
+  "--go_opt=Mic_nns_governance/pb/v1/governance.proto=$mod/governance"
+  "--go_opt=Mic_base_types/pb/v1/types.proto=$mod/basetypes"
+  "--go_opt=Mic_ledger/pb/v1/types.proto=$mod/ledger"
+  "--go_opt=Mic_nervous_system/pb/v1/nervous_system.proto=$mod/nervoussystem"
+  "--go_opt=Mic_nns_common/pb/v1/types.proto=$mod/nnscommon"
+  "--go_opt=Mic_sns_swap/pb/v1/swap.proto=$mod/snsswap"
+)
 
-# All three .proto files land in one Go package (registrypb) via M-mappings;
-# their distinct proto packages (registry.subnet.v1, ...) do not force separate
-# Go packages once mapped to the same import path.
+rm -rf "$root/nns/pb"
+mkdir -p "$root/nns/pb"
+
 protoc \
   --proto_path="$src" \
-  --go_out="$outdir" \
-  --go_opt=paths=source_relative \
-  --go_opt=Mregistry/subnet/v1/subnet.proto=./registrypb \
-  --go_opt=Mregistry/crypto/v1/crypto.proto=./registrypb \
-  --go_opt=Mregistry/replica_version/v1/replica_version.proto=./registrypb \
-  --go_opt=Mregistry/node/v1/node.proto=./registrypb \
-  --go_opt=Mregistry/node_operator/v1/node_operator.proto=./registrypb \
-  --go_opt=Mregistry/dc/v1/dc.proto=./registrypb \
-  --go_opt=Mtypes/v1/types.proto=./registrypb \
-  "${protos[@]/#/$src/}"
+  --go_out="$root/nns/pb" \
+  --go_opt=module="$mod" \
+  "${maps[@]}" \
+  "${names[@]/#/$src/}"
 
-# protoc lays files out under the source-relative tree; flatten to the package dir.
-find "$outdir" -name '*.pb.go' -exec mv -f {} "$outdir/" \;
-find "$outdir" -type d -empty -delete
-gofmt -w "$outdir"
-echo "generated nns/registrypb from ic @ ${IC_RELEASE_COMMIT:0:12}"
+gofmt -w "$root/nns/pb"
+echo "generated nns/pb from ic @ ${IC_RELEASE_COMMIT:0:12}"

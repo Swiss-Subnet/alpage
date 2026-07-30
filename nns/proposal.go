@@ -7,6 +7,7 @@ import (
 
 	"github.com/aviate-labs/agent-go/principal"
 	"github.com/swiss-subnet/alpage/gen/governance"
+	governancepb "github.com/swiss-subnet/alpage/nns/pb/governance"
 )
 
 // ProposerNeuron returns the id of the proposer neuron pre-seeded into
@@ -65,14 +66,16 @@ var statusName = map[int32]string{1: "Open", 2: "Rejected", 3: "Adopted", 4: "Ex
 
 // funcName / renderer map an NNS function number to its label and payload
 // decoder, so rendering dispatches on the stored proposal's function without
-// caring which Action produced it.
+// caring which Action produced it. Keyed by int32 rather than NnsFunction: the
+// number comes off the wire, so it may name a function this build has no enum
+// value for.
 var funcName = map[int32]string{
-	nnsFunctionChangeSubnetMembership:        "change_subnet_membership",
-	nnsFunctionDeployGuestosToAllSubnetNodes: "deploy_guestos_to_all_subnet_nodes",
+	int32(governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP):           "change_subnet_membership",
+	int32(governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES): "deploy_guestos_to_all_subnet_nodes",
 }
 var renderer = map[int32]Action{
-	nnsFunctionChangeSubnetMembership:        ResizeProposal{},
-	nnsFunctionDeployGuestosToAllSubnetNodes: DeployGuestosAction{},
+	int32(governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP):           ResizeProposal{},
+	int32(governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES): DeployGuestosAction{},
 }
 
 func label(m map[int32]string, v int32) string {

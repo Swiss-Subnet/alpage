@@ -1,7 +1,7 @@
 # Generated candid bindings (regenerate with ./generate.sh from the pinned release)
 /gen/
-# Generated registry protobuf types (regenerate with ./generate-proto.sh)
-/nns/registrypb/
+# Generated IC protobuf types (regenerate with ./generate-proto.sh)
+/nns/pb/
 # Extracted did files (byproduct of the pinned canisters.tar)
 /did/
 # pocket-ic server runtime files

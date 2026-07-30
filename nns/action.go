@@ -9,13 +9,7 @@ import (
 	"github.com/aviate-labs/agent-go/principal"
 	"github.com/swiss-subnet/alpage/gen/governance"
 	"github.com/swiss-subnet/alpage/gen/registry"
-)
-
-// NNS function numbers from the governance proto, one per ExecuteNnsFunction
-// action we support.
-const (
-	nnsFunctionDeployGuestosToAllSubnetNodes int32 = 11
-	nnsFunctionChangeSubnetMembership        int32 = 31
+	governancepb "github.com/swiss-subnet/alpage/nns/pb/governance"
 )
 
 // Action is one kind of NNS proposal. The framework (config, state, dry-run,
@@ -25,7 +19,7 @@ const (
 // spec.go.
 type Action interface {
 	Kind() string
-	NnsFunction() int32
+	NnsFunction() governancepb.NnsFunction
 	Metadata() Meta
 	// PayloadBlob is the exact candid-encoded blob nested inside the
 	// ExecuteNnsFunction action. Its SHA-256 is what state pins.
@@ -66,7 +60,7 @@ func makeProposalRequest(neuron governance.NeuronId, a Action) (governance.Manag
 				Url:     m.URL,
 				Action: &governance.ProposalActionRequest{
 					ExecuteNnsFunction: &governance.ExecuteNnsFunction{
-						NnsFunction: a.NnsFunction(),
+						NnsFunction: int32(a.NnsFunction()),
 						Payload:     blob,
 					},
 				},
@@ -88,8 +82,10 @@ func payloadSHA256(a Action) (string, error) {
 // --- resize: change_subnet_membership (add/remove nodes) ---
 
 // ResizeProposal is the "resize subnet" action (e.g. mainnet 141235, 142931).
-func (r ResizeProposal) Kind() string       { return "resize" }
-func (r ResizeProposal) NnsFunction() int32 { return nnsFunctionChangeSubnetMembership }
+func (r ResizeProposal) Kind() string { return "resize" }
+func (r ResizeProposal) NnsFunction() governancepb.NnsFunction {
+	return governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP
+}
 
 func (r ResizeProposal) PayloadBlob() ([]byte, error) {
 	payload := registry.ChangeSubnetMembershipPayload{
@@ -139,8 +135,10 @@ type DeployGuestosAction struct {
 	ReplicaVersionID string
 }
 
-func (d DeployGuestosAction) Kind() string       { return "deploy_guestos" }
-func (d DeployGuestosAction) NnsFunction() int32 { return nnsFunctionDeployGuestosToAllSubnetNodes }
+func (d DeployGuestosAction) Kind() string { return "deploy_guestos" }
+func (d DeployGuestosAction) NnsFunction() governancepb.NnsFunction {
+	return governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES
+}
 
 func (d DeployGuestosAction) PayloadBlob() ([]byte, error) {
 	payload := registry.DeployGuestosToAllSubnetNodesPayload{

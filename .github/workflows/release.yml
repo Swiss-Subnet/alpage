@@ -39,7 +39,7 @@ jobs:
       - name: Warm devShell
         run: nix develop --command true
 
-      # gen/ and registrypb/ are not committed; regenerate from the pinned
+      # gen/ and nns/pb/ are not committed; regenerate from the pinned
       # release before building, same as CI.
       - name: Generate bindings
         run: |

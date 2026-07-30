@@ -11,7 +11,7 @@ import (
 	"github.com/aviate-labs/agent-go/principal"
 	bls "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/fxamacker/cbor/v2"
-	"github.com/swiss-subnet/alpage/nns/registrypb"
+	registrypb "github.com/swiss-subnet/alpage/nns/pb/registry"
 	"google.golang.org/protobuf/proto"
 )
 

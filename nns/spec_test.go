@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	governancepb "github.com/swiss-subnet/alpage/nns/pb/governance"
 )
 
 const testConfig = "testdata/config.hcl"
@@ -86,7 +88,7 @@ func TestLoadDeployGuestosSpec(t *testing.T) {
 	if !ok {
 		t.Fatalf("action is %T, want DeployGuestosAction", a)
 	}
-	if a.NnsFunction() != nnsFunctionDeployGuestosToAllSubnetNodes {
+	if a.NnsFunction() != governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES {
 		t.Errorf("nns function = %d", a.NnsFunction())
 	}
 	if d.Metadata().Title == "" {
@@ -101,19 +103,17 @@ func TestLoadDeployGuestosSpec(t *testing.T) {
 	}
 }
 
-// TestNnsFunctionNumbers pins the function numbers against the values in the
-// governance enum (rs/nns/governance/api/src/types.rs at the pinned release),
-// not against alpage's own constants: asserting a constant equals itself is
-// what let a wrong number survive. Update these literals only alongside a
-// verified change in the pinned IC release.
+// TestNnsFunctionNumbers pins each action's function number to the literal
+// value in the governance enum. The enum now comes from the pinned release, so
+// this guards against picking the wrong variant rather than mistyping a number.
 func TestNnsFunctionNumbers(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		got  int32
 		want int32
 	}{
-		{"ChangeSubnetMembership", nnsFunctionChangeSubnetMembership, 31},
-		{"DeployGuestosToAllSubnetNodes", nnsFunctionDeployGuestosToAllSubnetNodes, 11},
+		{"resize", int32(ResizeProposal{}.NnsFunction()), 31},
+		{"deploy_guestos", int32(DeployGuestosAction{}.NnsFunction()), 11},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
