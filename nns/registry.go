@@ -128,6 +128,61 @@ func FetchSubnetFeatures(host string, fetchRootKey bool, subnetID principal.Prin
 	return SubnetFeatures{SevEnabled: resp.Ok.Features.SevEnabled}, nil
 }
 
+// FetchSubnetRecordFacts returns the subnet record fields reconcile compares
+// against: type, cost schedule, and admins. Read-only.
+func FetchSubnetRecordFacts(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (SubnetRecordFacts, error) {
+	a, err := newRegistryAgent(host, fetchRootKey, opts)
+	if err != nil {
+		return SubnetRecordFacts{}, fmt.Errorf("new registry agent: %w", err)
+	}
+	resp, err := a.GetSubnet(registry.GetSubnetRequest{SubnetId: &subnetID})
+	if err != nil {
+		return SubnetRecordFacts{}, fmt.Errorf("get_subnet: %w", err)
+	}
+	if resp.Err != nil {
+		return SubnetRecordFacts{}, fmt.Errorf("registry rejected get_subnet: %s", *resp.Err)
+	}
+	if resp.Ok == nil {
+		return SubnetRecordFacts{}, fmt.Errorf("get_subnet: empty response")
+	}
+	admins := make([]string, 0, len(resp.Ok.SubnetAdmins))
+	for _, p := range resp.Ok.SubnetAdmins {
+		admins = append(admins, p.Encode())
+	}
+	return SubnetRecordFacts{
+		Type:         candidSubnetTypeName(resp.Ok.SubnetType),
+		CostSchedule: candidCostScheduleName(resp.Ok.CanisterCyclesCostSchedule),
+		Admins:       admins,
+	}, nil
+}
+
+// candidSubnetTypeName maps the Candid SubnetType variant to its HCL name. The
+// variant carries one non-nil arm; an all-nil value means the record omitted the
+// field, which reads as the default.
+func candidSubnetTypeName(t registry.SubnetType) string {
+	switch {
+	case t.CloudEngine != nil:
+		return SubnetTypeCloudEngine
+	case t.System != nil:
+		return SubnetTypeSystem
+	case t.VerifiedApplication != nil:
+		return SubnetTypeVerifiedApplication
+	case t.Application != nil:
+		return SubnetTypeApplication
+	}
+	return ""
+}
+
+func candidCostScheduleName(s registry.CanisterCyclesCostSchedule) string {
+	switch {
+	case s.Free != nil:
+		return CostScheduleFree
+	case s.Normal != nil:
+		return CostScheduleNormal
+	}
+	return ""
+}
+
 // FetchSubnetReplicaVersion returns a subnet's current GuestOS/replica version
 // id from the registry. Read-only.
 func FetchSubnetReplicaVersion(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (string, error) {

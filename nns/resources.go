@@ -33,6 +33,21 @@ type Subnet struct {
 	// a subnet-level fact on-chain; the registry's per-node record carries only
 	// chip_id (hardware provenance), not runtime TEE state.
 	SevEnabled bool `hcl:"sev_enabled,optional"`
+	// Type is the subnet type: application (the default when omitted),
+	// verified_application, system, or cloud_engine. Omitted means application,
+	// so a subnet whose type changes on-chain surfaces as drift rather than
+	// being silently accepted.
+	Type string `hcl:"type,optional"`
+	// CostSchedule is the canister cycles cost schedule: normal (the default) or
+	// free. Cloud engines must be free; the registry enforces it, so ValidateSubnet
+	// rejects the combination before a proposal is cut.
+	CostSchedule string `hcl:"cost_schedule,optional"`
+	// Admins are the principals with admin rights on the subnet (subnet_admins
+	// on the record). Allowed only on a cloud_engine or a rented subnet, which
+	// the registry infers from application + free rather than a subnet type.
+	// Declaring none asserts none: a subnet that gains an admin on-chain is
+	// drift. Order is not meaningful.
+	Admins []string `hcl:"admins,optional"`
 }
 
 // NodeProvider is referenced from node_operator as node_provider.<name>.id.
@@ -200,6 +215,14 @@ func loadResources(path string) (*Resources, error) {
 	// references to a block the author did not mean.
 	if err := checkUnique(body); err != nil {
 		return nil, err
+	}
+	// Reject declarations the registry would refuse (a cloud engine off the free
+	// schedule, admins on a subnet that may not have them) at load rather than
+	// leaving them to surface as a failed proposal.
+	for _, sn := range rf.Subnets {
+		if err := ValidateSubnet(sn); err != nil {
+			return nil, err
+		}
 	}
 	labels := map[string]string{}
 	addLabels(labels, rf.Nodes)
