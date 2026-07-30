@@ -1,0 +1,40 @@
+name: DCO
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signoff:
+    runs-on: ubuntu-latest
+    steps:
+      # Need the full PR range, not the default shallow tip, to inspect every
+      # commit's trailers.
+      - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Check Signed-off-by
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          fail=0
+          # Skip merge commits: they carry no authored change to certify.
+          for c in $(git rev-list --no-merges "$BASE".."$HEAD"); do
+            author="$(git show -s --format='%an <%ae>' "$c")"
+            if git show -s --format='%B' "$c" | grep -qiF "Signed-off-by: $author"; then
+              continue
+            fi
+            echo "::error::missing or mismatched Signed-off-by on $(git show -s --format='%h %s' "$c") (expected: Signed-off-by: $author)"
+            fail=1
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Sign off your commits with 'git commit -s', or fix the branch with 'git rebase --signoff ${GITHUB_BASE_REF:-main}'. See CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "all commits signed off"

@@ -76,7 +76,35 @@ jobs:
             done
           '
 
+      # BUSL-1.1 sets the Change Date per version, four years after that version
+      # is published. Record both dates in the release notes so each version's
+      # clock is auditable from the release itself.
+      - name: Build license notes
+        run: |
+          set -euo pipefail
+          published="$(date -u +%Y-%m-%d)"
+          change="$(date -u -d '+4 years' +%Y-%m-%d)"
+          cat > dist/RELEASE_NOTES.md <<EOF
+          ## Licensing
+
+          Alpage is (c) 2026 Swiss Subnet AG and licensed under the Business
+          Source License 1.1 (see LICENSE).
+
+          - Published: ${published}
+          - Change Date: ${change} (this version converts to Apache License 2.0)
+
+          Running Alpage against your own fleet of up to 10 nodes is free,
+          including in production; evaluation and testing are free at any fleet
+          size. Beyond 10 nodes, managing fleets for third parties, or offering a
+          hosted service built on Alpage needs a commercial licence: see
+          docs/licensing.md or contact licensing@subnet.ch.
+          EOF
+          cat dist/RELEASE_NOTES.md
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes --verify-tag
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            $(ls dist/* | grep -v RELEASE_NOTES.md) \
+            --generate-notes --notes-file dist/RELEASE_NOTES.md --verify-tag
