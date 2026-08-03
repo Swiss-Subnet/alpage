@@ -78,6 +78,17 @@ type NodeOperator struct {
 	Dc string `hcl:"dc,optional"`
 }
 
+// GuestosVersionRes names a GuestOS/replica version so many nodes can share one
+// declaration, making a fleet-wide rollout a single edit. Referenced from node
+// as guestos_version.<name>.id. Unlike the other kinds its id is a version hash
+// rather than a principal, but it is spelled id so it resolves through the same
+// <kind>.<name>.id form.
+type GuestosVersionRes struct {
+	Name  string `hcl:"name,label"`
+	ID    string `hcl:"id"`
+	Label string `hcl:"label,optional"`
+}
+
 // NodeRes is a node resource, referenced from proposals as node.<name>.id.
 // (Named NodeRes to avoid colliding with the proposal-payload Node in spec.go.)
 type NodeRes struct {
@@ -118,28 +129,34 @@ func (n NodeRes) name() string       { return n.Name }
 func (n NodeRes) id() string         { return n.ID }
 func (n NodeRes) label() string      { return n.Label }
 
+func (v GuestosVersionRes) name() string  { return v.Name }
+func (v GuestosVersionRes) id() string    { return v.ID }
+func (v GuestosVersionRes) label() string { return v.Label }
+
 // DefaultResourcesPath is where node/subnet resources live, relative to the
 // module root.
 const DefaultResourcesPath = "resources.hcl"
 
 type resourcesFile struct {
-	Nodes     []NodeRes      `hcl:"node,block"`
-	Subnets   []Subnet       `hcl:"subnet,block"`
-	Providers []NodeProvider `hcl:"node_provider,block"`
-	Operators []NodeOperator `hcl:"node_operator,block"`
-	DCs       []DataCenter   `hcl:"data_center,block"`
+	Nodes     []NodeRes           `hcl:"node,block"`
+	Subnets   []Subnet            `hcl:"subnet,block"`
+	Providers []NodeProvider      `hcl:"node_provider,block"`
+	Operators []NodeOperator      `hcl:"node_operator,block"`
+	DCs       []DataCenter        `hcl:"data_center,block"`
+	Versions  []GuestosVersionRes `hcl:"guestos_version,block"`
 }
 
 // leafBlocks is the first-pass shape: it reads the reference-free blocks
-// (subnets, providers, data centers), leaving the referencing blocks (operators
-// ref providers/DCs, nodes ref operators/subnets) as raw unevaluated bodies so
-// their cross-references are not evaluated before the context resolving them
-// exists.
+// (subnets, providers, data centers, GuestOS versions), leaving the referencing
+// blocks (operators ref providers/DCs, nodes ref operators/subnets/versions) as
+// raw unevaluated bodies so their cross-references are not evaluated before the
+// context resolving them exists.
 type leafBlocks struct {
-	Subnets   []Subnet       `hcl:"subnet,block"`
-	Providers []NodeProvider `hcl:"node_provider,block"`
-	DCs       []DataCenter   `hcl:"data_center,block"`
-	Rest      hcl.Body       `hcl:",remain"`
+	Subnets   []Subnet            `hcl:"subnet,block"`
+	Providers []NodeProvider      `hcl:"node_provider,block"`
+	DCs       []DataCenter        `hcl:"data_center,block"`
+	Versions  []GuestosVersionRes `hcl:"guestos_version,block"`
+	Rest      hcl.Body            `hcl:",remain"`
 }
 
 // operatorBlocks is the second-pass shape: it reads node_operator blocks (which
@@ -159,6 +176,7 @@ type Resources struct {
 	Providers []NodeProvider
 	Operators []NodeOperator
 	DCs       []DataCenter
+	Versions  []GuestosVersionRes
 	labels    map[string]string // id -> label
 }
 
@@ -198,6 +216,7 @@ func loadResources(path string) (*Resources, error) {
 	setVar(ctx, "subnet", leaf.Subnets)
 	setVar(ctx, "node_provider", leaf.Providers)
 	setVar(ctx, "data_center", leaf.DCs)
+	setVar(ctx, "guestos_version", leaf.Versions)
 
 	var ops operatorBlocks
 	if diags := gohcl.DecodeBody(body, ctx, &ops); diags.HasErrors() {
@@ -232,7 +251,7 @@ func loadResources(path string) (*Resources, error) {
 	addLabels(labels, rf.DCs)
 	return &Resources{
 		Nodes: rf.Nodes, Subnets: rf.Subnets, Providers: rf.Providers,
-		Operators: rf.Operators, DCs: rf.DCs, labels: labels,
+		Operators: rf.Operators, DCs: rf.DCs, Versions: rf.Versions, labels: labels,
 	}, nil
 }
 
@@ -244,7 +263,7 @@ func setVar[T namedResource](ctx *hcl.EvalContext, name string, rs []T) {
 
 // resourceKinds are the block types carrying a name label, in the order they
 // are reported.
-var resourceKinds = []string{"subnet", "node", "node_provider", "node_operator", "data_center"}
+var resourceKinds = []string{"subnet", "node", "node_provider", "node_operator", "data_center", "guestos_version"}
 
 // checkUnique rejects a repeated name or id within a kind. It walks the merged
 // body rather than the decoded structs so each collision reports the file and

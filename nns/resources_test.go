@@ -149,3 +149,47 @@ proposal "upgrade" {
 		t.Errorf("error does not name the collision: %v", err)
 	}
 }
+
+// A guestos_version resource lets many nodes share one declared version, so a
+// fleet-wide rollout is a single edit rather than one per node.
+func TestGuestosVersionResourceResolves(t *testing.T) {
+	const hash = "0c121276f3152d29b5d5b0a25f56ff0a83e64f3e"
+	path := writeResources(t, `
+guestos_version "latest" {
+  id = "`+hash+`"
+}
+node "n1" {
+  id              = "aaaaa-aa"
+  guestos_version = guestos_version.latest.id
+}
+`)
+	rs, err := loadResources(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(rs.Nodes) != 1 {
+		t.Fatalf("want 1 node, got %d", len(rs.Nodes))
+	}
+	if got := rs.Nodes[0].GuestosVersion; got != hash {
+		t.Errorf("guestos_version = %q, want %q", got, hash)
+	}
+}
+
+// The kind participates in collision checking like every other resource.
+func TestDuplicateGuestosVersionNameRejected(t *testing.T) {
+	path := writeResources(t, `
+guestos_version "latest" {
+  id = "aaaa"
+}
+guestos_version "latest" {
+  id = "bbbb"
+}
+`)
+	_, err := loadResources(path)
+	if err == nil {
+		t.Fatal("duplicate guestos_version name accepted")
+	}
+	if !strings.Contains(err.Error(), "latest") {
+		t.Errorf("error does not name the collision: %v", err)
+	}
+}

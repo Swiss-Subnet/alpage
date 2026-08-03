@@ -49,6 +49,15 @@ A node operator, referenced by node as node_operator.<name>.id.
 | `provider` | attr | no | Id of its node provider (node_provider.<name>.id). |
 | `dc` | attr | no | Id of its data center (data_center.<name>.id). |
 
+### `guestos_version "<name>" { }`
+
+A named GuestOS/replica version, referenced by node as guestos_version.<name>.id.
+
+| Field | Kind | Required | Description |
+|-------|------|----------|-------------|
+| `id` | attr | yes | GuestOS/replica version hash. Spelled id, not hash, so it resolves through the same <kind>.<name>.id form as every other resource. |
+| `label` | attr | no | Human-readable name (e.g. the release name). |
+
 ### `node "<name>" { }`
 
 A node, referenced from proposals as node.<name>.id.

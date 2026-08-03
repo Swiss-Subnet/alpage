@@ -43,6 +43,11 @@ var SchemaBlocks = []SchemaBlock{
 		Type: NodeOperator{},
 	},
 	{
+		Name: "guestos_version", File: "resources.hcl", Labels: []string{"name"},
+		Doc:  "A named GuestOS/replica version, referenced by node as guestos_version.<name>.id.",
+		Type: GuestosVersionRes{},
+	},
+	{
 		Name: "node", File: "resources.hcl", Labels: []string{"name"},
 		Doc:  "A node, referenced from proposals as node.<name>.id.",
 		Type: NodeRes{},
@@ -96,6 +101,9 @@ var SchemaFieldDocs = map[string]string{
 	"NodeOperator.label":    "Human-readable name.",
 	"NodeOperator.provider": "Id of its node provider (node_provider.<name>.id).",
 	"NodeOperator.dc":       "Id of its data center (data_center.<name>.id).",
+
+	"GuestosVersionRes.id":    "GuestOS/replica version hash. Spelled id, not hash, so it resolves through the same <kind>.<name>.id form as every other resource.",
+	"GuestosVersionRes.label": "Human-readable name (e.g. the release name).",
 
 	"NodeRes.id":              "Principal of the node.",
 	"NodeRes.label":           "Human-readable name.",

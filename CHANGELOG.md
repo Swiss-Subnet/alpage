@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 
 ## [Unreleased]
 
+### Added
+
+- `guestos_version` resources name a GuestOS/replica version once, referenced from a node as `guestos_version.<name>.id`, so a fleet-wide rollout is a single edit rather than one per node. Nodes may still declare a literal hash.
+
 ## [0.2.0] - 2026-07-30
 
 ### Added
