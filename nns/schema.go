@@ -146,8 +146,9 @@ var SchemaFieldDocs = map[string]string{
 
 // SchemaUnreleased is the version Since values carry before that version is
 // tagged; the docs list it as unreleased rather than linking a tag that does
-// not exist yet. Bump it when cutting a release that changes the schema.
-const SchemaUnreleased = "v0.3.0"
+// not exist yet. Empty once that version ships, so every entry links its tag.
+// Set it to the next version when a change first lands after a release.
+const SchemaUnreleased = ""
 
 // SchemaFieldSince maps "<struct>.<hclname>" to the release tag that introduced
 // the field, so the generated docs say which version a reader's binary needs.

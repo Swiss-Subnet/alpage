@@ -4,7 +4,7 @@
 
 Alpage config is HCL. The blocks below are the complete schema; it is generated from the `hcl:"..."` struct tags in `nns/`, so it always matches what the tool parses.
 
-This page documents the current development schema. The Since column gives the release each block and field first appeared in, so a field newer than your binary is visible as such; see [Schema History](#schema-history) for the schema as of each release.
+This page documents the schema as of the latest release. The Since column gives the release each block and field first appeared in, so a field newer than your binary is visible as such; see [Schema History](#schema-history) for the schema as of each release.
 
 ## `resources.hcl`
 
@@ -128,7 +128,7 @@ This page documents the current development schema. The Since column gives the r
 
 Each release's schema, as generated at that tag:
 
-- **v0.3.0** (unreleased) - the schema above.
+- [v0.3.0](https://github.com/Swiss-Subnet/alpage/blob/v0.3.0/docs/config.md)
 - [v0.2.0](https://github.com/Swiss-Subnet/alpage/blob/v0.2.0/docs/config.md)
 - [v0.1.1](https://github.com/Swiss-Subnet/alpage/blob/v0.1.1/docs/config.md)
 - [v0.1.0](https://github.com/Swiss-Subnet/alpage/blob/v0.1.0/docs/config.md)

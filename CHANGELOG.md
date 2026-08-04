@@ -6,13 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-04
+
 ### Added
 
 - `guestos_version` resources name a GuestOS/replica version once, referenced from a node as `guestos_version.<name>.id`, so a fleet-wide rollout is a single edit rather than one per node. Nodes may still declare a literal hash.
+- The generated config reference records the release each block and field first appeared in, so a field newer than your binary is visible as such rather than looking like a missing feature.
 
 ### Changed
 
 - The `resize` proposal kind is renamed to `membership`, matching the `change_subnet_membership` NNS function it submits. The old name implied the node count always changes, but the common case adds and removes in one proposal to swap a node, leaving the subnet the same size. Rename `kind = "resize"` to `kind = "membership"` and the nested `resize { }` block to `membership { }`; there is no deprecation alias, so the old name is now a load error. The payload encoding is unchanged, so pinned payload hashes and in-flight proposals are unaffected.
+- The BUSL Additional Use Grant now covers fleets of up to five node machines, down from ten. Non-production use stays unrestricted at any fleet size.
 
 ## [0.2.0] - 2026-07-30
 
