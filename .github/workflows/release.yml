@@ -47,6 +47,22 @@ jobs:
           cp -r "$(nix build --no-link --print-out-paths .#genProto)" nns/pb
           chmod -R u+w gen nns/pb
 
+      # nns.Version is what the flake stamps into main.version, so a tag that
+      # disagrees with it would ship binaries reporting the wrong version.
+      - name: Check the tag matches nns.Version
+        run: |
+          set -euo pipefail
+          declared="$(nix run .#alp -- version)"
+          if [ "$declared" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::nns.Version is $declared but the tag is ${GITHUB_REF_NAME}; bump nns/version.go before tagging"
+            exit 1
+          fi
+
+      # Tag pushes do not trigger ci.yml, so the suite runs here too: without
+      # this a release could publish binaries that never had a test run.
+      - name: Test
+        run: nix develop --command go test ./...
+
       # Cross-compile alp for each target with the tag injected into main.version.
       # CGO is off so the binaries are static and cross-compilation needs no C
       # toolchain. Release artifacts are cross-compiled here (one runner, four

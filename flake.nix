@@ -22,10 +22,16 @@
 
         icCanistersTarHash = "sha256-PQdMyVOf6AGKssz7FsGUnOnvVooaCEkdGwj10sQ5NAQ=";
 
-        # alp version: a git tag when building a tagged rev, else the short rev,
-        # else "dev" for a dirty tree. Injected into main.version by the alp
-        # package's ldflags.
-        alpVersion = self.ref or (if self ? shortRev then "g${self.shortRev}" else "dev");
+        # alp version: read from nns/version.go, the same string the release
+        # workflow asserts against the tag. Not from self.ref, which a
+        # tag-pinned flake input does not expose. A tree with no rev is not the
+        # release commit, so it says so.
+        declaredVersion =
+          let
+            m = builtins.match ''.*const Version = "([^"]+)".*'' (builtins.readFile ./nns/version.go);
+          in
+          if m == null then throw "flake.nix: cannot parse Version from nns/version.go" else builtins.head m;
+        alpVersion = if self ? rev then declaredVersion else "${declaredVersion}-dirty";
 
         # Fixed-output hashes for the codegen derivations and the Go vendor tree.
         # Set to fakeHash and run `nix build` to learn the real values, then

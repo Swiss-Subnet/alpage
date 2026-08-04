@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 
 ## [Unreleased]
 
+### Fixed
+
+- `nix build` and `nix run` stamp the release version into `alp version` again. The version was derived from flake metadata that a tag-pinned flake input does not expose, so a consumer pinning a release tag got the short commit rev instead of the tag. A build off a working tree reports a `-dirty` suffix, so it is never mistaken for the release it is based on.
+
 ## [0.3.0] - 2026-08-04
 
 ### Added
