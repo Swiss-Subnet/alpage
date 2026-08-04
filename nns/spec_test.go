@@ -16,7 +16,7 @@ const (
 )
 
 func TestLoadSpecMatchesProposal(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "resize-example")
+	spec, err := LoadSpec(testConfig, "membership-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestLoadSpecMatchesProposal(t *testing.T) {
 }
 
 func TestResourceReferencesResolve(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "resize-example")
+	spec, err := LoadSpec(testConfig, "membership-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestResourceReferencesResolve(t *testing.T) {
 // TestInlineAndRefAreEquivalent proves an inline id and a resource reference to
 // the same id produce the identical payload hash.
 func TestInlineAndRefAreEquivalent(t *testing.T) {
-	ref, err := LoadSpec(testConfig, "resize-example")
+	ref, err := LoadSpec(testConfig, "membership-example")
 	if err != nil {
 		t.Fatalf("load ref spec: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestInlineAndRefAreEquivalent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ref hash: %v", err)
 	}
-	inline, err := LoadSpec("testdata/inline.hcl", "resize-example")
+	inline, err := LoadSpec("testdata/inline.hcl", "membership-example")
 	if err != nil {
 		t.Fatalf("load inline spec: %v", err)
 	}
@@ -97,9 +97,9 @@ func TestLoadDeployGuestosSpec(t *testing.T) {
 	if _, err := a.PayloadBlob(); err != nil {
 		t.Errorf("payload blob: %v", err)
 	}
-	// A resize spec is not a deploy_guestos, and vice versa.
+	// A membership spec is not a deploy_guestos, and vice versa.
 	if _, err := spec.Proposal(); err == nil {
-		t.Error("expected Proposal() to reject a non-resize spec")
+		t.Error("expected Proposal() to reject a non-membership spec")
 	}
 }
 
@@ -112,7 +112,7 @@ func TestNnsFunctionNumbers(t *testing.T) {
 		got  int32
 		want int32
 	}{
-		{"resize", int32(ResizeProposal{}.NnsFunction()), 31},
+		{"membership", int32(MembershipProposal{}.NnsFunction()), 31},
 		{"deploy_guestos", int32(DeployGuestosAction{}.NnsFunction()), 11},
 	} {
 		if tc.got != tc.want {
@@ -130,7 +130,7 @@ func TestLoadSpecUnknownName(t *testing.T) {
 // TestPayloadHashStable pins the wire-payload hash. If this changes, the
 // submitted bytes changed and any recorded state is stale.
 func TestPayloadHashStable(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "resize-example")
+	spec, err := LoadSpec(testConfig, "membership-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -145,11 +145,11 @@ func TestPayloadHashStable(t *testing.T) {
 	if h1 != h2 {
 		t.Errorf("hash not deterministic: %s vs %s", h1, h2)
 	}
-	t.Logf("resize-example payload sha256 = %s", h1)
+	t.Logf("membership-example payload sha256 = %s", h1)
 }
 
 func TestStateImport(t *testing.T) {
-	spec, err := LoadSpec(testConfig, "resize-example")
+	spec, err := LoadSpec(testConfig, "membership-example")
 	if err != nil {
 		t.Fatalf("load spec: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestStateImport(t *testing.T) {
 	if err := st.Import(spec, 142931, "prin", MainnetHost, "2026-07-17T00:00:00Z", ProposerNeuronID); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	e := st.Proposals["resize-example"]
+	e := st.Proposals["membership-example"]
 	if e.ProposalID != 142931 || e.PayloadSHA256 != hash || e.SubmittedBy != "prin" || e.Neuron != ProposerNeuronID {
 		t.Errorf("imported entry wrong: %+v", e)
 	}
@@ -185,8 +185,8 @@ func TestStateRoundTrip(t *testing.T) {
 	if err != nil || len(st.Proposals) != 0 {
 		t.Fatalf("missing state: got %+v, %v; want empty, nil", st, err)
 	}
-	want := Entry{Kind: "resize", ProposalID: 142931, PayloadSHA256: "abc", SubmittedBy: "p", Neuron: 1, Host: "h", SubmittedAt: "2026-07-17T00:00:00Z"}
-	st.Proposals["resize-example"] = want
+	want := Entry{Kind: "membership", ProposalID: 142931, PayloadSHA256: "abc", SubmittedBy: "p", Neuron: 1, Host: "h", SubmittedAt: "2026-07-17T00:00:00Z"}
+	st.Proposals["membership-example"] = want
 	if err := SaveState(path, st); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -194,8 +194,8 @@ func TestStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if got.Proposals["resize-example"] != want {
-		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", got.Proposals["resize-example"], want)
+	if got.Proposals["membership-example"] != want {
+		t.Errorf("round trip mismatch:\n got %+v\nwant %+v", got.Proposals["membership-example"], want)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("state file missing: %v", err)

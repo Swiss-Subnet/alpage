@@ -25,7 +25,7 @@ func (f *fakeSubmitter) Submit(neuron governance.NeuronId, a Action) (uint64, er
 func recordArgs() RecordArgs {
 	return RecordArgs{
 		Name:        "x",
-		Kind:        "resize",
+		Kind:        "membership",
 		Hash:        "hash1",
 		SubmittedBy: "prin",
 		Neuron:      7,
@@ -56,7 +56,7 @@ func TestSubmitAndRecordSuccess(t *testing.T) {
 		t.Errorf("state saved %d times, want 1", saved)
 	}
 	e := st.Proposals["x"]
-	if e.ProposalID != 999 || e.PayloadSHA256 != "hash1" || e.Kind != "resize" || e.SubmittedBy != "prin" || e.Neuron != 7 {
+	if e.ProposalID != 999 || e.PayloadSHA256 != "hash1" || e.Kind != "membership" || e.SubmittedBy != "prin" || e.Neuron != 7 {
 		t.Errorf("recorded entry wrong: %+v", e)
 	}
 }

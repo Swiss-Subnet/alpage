@@ -55,7 +55,7 @@ Global submission settings (`host`, `neuron`, `fetch_root_key`) live in a `provi
 
 Each proposal has a `kind` and a matching nested block:
 
-- `resize` — `change_subnet_membership`: add/remove nodes on a subnet.
+- `membership` — `change_subnet_membership`: add and/or remove nodes on a subnet. Adding and removing in one proposal swaps a node, leaving the subnet size unchanged.
 - `deploy_guestos` — `deploy_guestos_to_all_subnet_nodes`: upgrade every node in a subnet to a replica version.
 
 Adding a kind is a new `Action` implementation plus one decode case; state, dry-run, submit, and drift detection are kind-agnostic.

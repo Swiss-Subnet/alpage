@@ -106,22 +106,22 @@ func stubSources(t *testing.T, elected ...string) []FetchOption {
 	return []FetchOption{WithExplorer(srv.URL), WithDashboard(srv.URL + "/proposals")}
 }
 
-// resizeFixture loads the self-contained resize fixture (the live config lives
+// membershipFixture loads the self-contained membership fixture (the live config lives
 // in a separate repo).
-func resizeFixture(t *testing.T) ResizeProposal {
+func membershipFixture(t *testing.T) MembershipProposal {
 	t.Helper()
-	spec, err := LoadSpec("testdata/golden_src/proposals.hcl", "resize-fixture")
+	spec, err := LoadSpec("testdata/golden_src/proposals.hcl", "membership-fixture")
 	if err != nil {
-		t.Fatalf("load resize-fixture spec: %v", err)
+		t.Fatalf("load membership-fixture spec: %v", err)
 	}
 	p, err := spec.Proposal()
 	if err != nil {
-		t.Fatalf("decode resize-fixture spec: %v", err)
+		t.Fatalf("decode membership-fixture spec: %v", err)
 	}
 	return p
 }
 
-func assertResizeRendered(t *testing.T, rendered string) {
+func assertMembershipRendered(t *testing.T, rendered string) {
 	t.Helper()
 	for _, want := range []string{
 		"change_subnet_membership",
@@ -137,13 +137,13 @@ func assertResizeRendered(t *testing.T, rendered string) {
 	}
 }
 
-func TestSubmitResizeFixture(t *testing.T) {
+func TestSubmitMembershipFixture(t *testing.T) {
 	n := startNNS(t, principal.Principal{})
 	neuron := n.ProposerNeuron()
 
-	pid, err := n.SubmitResize(neuron, resizeFixture(t))
+	pid, err := n.SubmitMembership(neuron, membershipFixture(t))
 	if err != nil {
-		t.Fatalf("submit resize: %v", err)
+		t.Fatalf("submit membership: %v", err)
 	}
 	pi, err := n.GetProposalInfo(pid)
 	if err != nil {
@@ -152,7 +152,7 @@ func TestSubmitResizeFixture(t *testing.T) {
 	rendered := Render(pi)
 	t.Logf("\n%s", rendered)
 
-	assertResizeRendered(t, rendered)
+	assertMembershipRendered(t, rendered)
 	// The seeded neuron has voting power, so the proposal is adopted. This
 	// harness deliberately brings up an empty registry (no seeds), so execution
 	// then fails for lack of subnet records; that is fine here, as this test
@@ -214,7 +214,7 @@ func sortedEncode(ps []principal.Principal) []string {
 // TestPreflightAgainstSeededSubnet seeds the local registry with a subnet
 // (membership + replica version), then exercises the production read paths over
 // an HTTP gateway: FetchSubnetMembership/FetchSubnetReplicaVersion and
-// ResizeProposal.Preflight all run byte-for-byte as they do against mainnet.
+// MembershipProposal.Preflight all run byte-for-byte as they do against mainnet.
 // The subnet is built from in-test principals, not any committed proposal
 // config.
 func TestPreflightAgainstSeededSubnet(t *testing.T) {
@@ -247,7 +247,7 @@ func TestPreflightAgainstSeededSubnet(t *testing.T) {
 
 	// Remove a real member and add nodeC (not a member): a real change, so
 	// Preflight must not flag it (Clean, empty report).
-	real := ResizeProposal{
+	real := MembershipProposal{
 		SubnetID:      subnetX,
 		NodeIDsAdd:    []principal.Principal{nodeC},
 		NodeIDsRemove: []principal.Principal{members[0]},
@@ -262,7 +262,7 @@ func TestPreflightAgainstSeededSubnet(t *testing.T) {
 
 	// Remove nodeC, which is not a member: a phantom no-op, and the only op, so
 	// the whole plan is a no-op -> NoOp.
-	phantom := ResizeProposal{SubnetID: subnetX, NodeIDsRemove: []principal.Principal{nodeC}}
+	phantom := MembershipProposal{SubnetID: subnetX, NodeIDsRemove: []principal.Principal{nodeC}}
 	pf, err = phantom.Preflight(url, true, DisableQueryVerification())
 	if err != nil {
 		t.Fatalf("phantom preflight: %v", err)
@@ -409,7 +409,7 @@ func TestSubmitViaHotkey(t *testing.T) {
 	}
 
 	// Submit as the hotkey principal, not the controller.
-	pid, err := n.SubmitResizeAs(n.Hotkey, n.ProposerNeuron(), resizeFixture(t))
+	pid, err := n.SubmitMembershipAs(n.Hotkey, n.ProposerNeuron(), membershipFixture(t))
 	if err != nil {
 		t.Fatalf("submit via hotkey: %v", err)
 	}
@@ -419,5 +419,5 @@ func TestSubmitViaHotkey(t *testing.T) {
 	}
 	rendered := Render(pi)
 	t.Logf("\n%s", rendered)
-	assertResizeRendered(t, rendered)
+	assertMembershipRendered(t, rendered)
 }

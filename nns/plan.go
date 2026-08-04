@@ -23,22 +23,22 @@ type Op struct {
 	Reason string
 }
 
-// ResizePlan is the reconciliation of a resize proposal against a subnet's
+// MembershipPlan is the reconciliation of a membership proposal against a subnet's
 // current on-chain membership.
-type ResizePlan struct {
+type MembershipPlan struct {
 	SubnetID string
 	Ops      []Op
 }
 
-// PlanResize diffs a resize proposal against the subnet's current membership
+// PlanMembership diffs a membership proposal against the subnet's current membership
 // (textual principals, as returned by FetchSubnetMembership). Pure: the caller
 // fetches membership and passes it in.
-func PlanResize(r ResizeProposal, current []string) ResizePlan {
+func PlanMembership(r MembershipProposal, current []string) MembershipPlan {
 	member := make(map[string]bool, len(current))
 	for _, id := range current {
 		member[id] = true
 	}
-	plan := ResizePlan{SubnetID: r.SubnetID.Encode()}
+	plan := MembershipPlan{SubnetID: r.SubnetID.Encode()}
 	for _, n := range r.NodeIDsAdd {
 		id := n.Encode()
 		op := Op{Kind: OpAdd, NodeID: id}
@@ -58,7 +58,7 @@ func PlanResize(r ResizeProposal, current []string) ResizePlan {
 	return plan
 }
 
-func (p ResizePlan) HasWarnings() bool {
+func (p MembershipPlan) HasWarnings() bool {
 	for _, op := range p.Ops {
 		if op.Warn {
 			return true
@@ -69,9 +69,9 @@ func (p ResizePlan) HasWarnings() bool {
 
 // AllNoOp reports whether every op in a non-empty plan is a no-op, i.e. the
 // proposal would change nothing on-chain. This is the strongest refuse signal
-// for apply: a resize that does nothing (e.g. one already executed) should not
+// for apply: a membership change that does nothing (e.g. one already executed) should not
 // be resubmitted.
-func (p ResizePlan) AllNoOp() bool {
+func (p MembershipPlan) AllNoOp() bool {
 	if len(p.Ops) == 0 {
 		return false
 	}
@@ -99,9 +99,9 @@ type Preflight struct {
 	Level  PreflightLevel
 }
 
-// resizePreflight grades a resize plan: no warnings is Clean (empty report),
+// membershipPreflight grades a membership plan: no warnings is Clean (empty report),
 // all-no-op is NoOp, any real op alongside a warning is Warn.
-func resizePreflight(p ResizePlan) Preflight {
+func membershipPreflight(p MembershipPlan) Preflight {
 	if !p.HasWarnings() {
 		return Preflight{}
 	}
@@ -141,7 +141,7 @@ func planDeployGuestos(target, current string, elected ElectedVersions, rel *Rel
 	return Preflight{b.String(), PreflightClean}
 }
 
-func (p ResizePlan) Render() string {
+func (p MembershipPlan) Render() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "subnet %s\n", p.SubnetID)
 	warnings := 0

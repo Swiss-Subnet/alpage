@@ -89,18 +89,18 @@ One NNS proposal. Carries common metadata plus a nested block named after its ki
 
 | Field | Kind | Required | Description |
 |-------|------|----------|-------------|
-| `kind` | attr | yes | Proposal kind; selects the nested block (resize, deploy_guestos). |
+| `kind` | attr | yes | Proposal kind; selects the nested block (membership, deploy_guestos). |
 | `title` | attr | yes | Proposal title shown on the NNS. |
 | `summary` | attr | no | Proposal summary (markdown). |
 | `url` | attr | no | Reference URL (e.g. forum thread). |
 
-### `resize { }`
+### `membership { }`
 
-Nested in a proposal of kind "resize": change_subnet_membership. Holds add/remove node blocks.
+Nested in a proposal of kind "membership": change_subnet_membership. Holds add/remove node blocks.
 
 | Field | Kind | Required | Description |
 |-------|------|----------|-------------|
-| `subnet_id` | attr | yes | Subnet to resize (subnet.<name>.id). |
+| `subnet_id` | attr | yes | Subnet whose membership changes (subnet.<name>.id). |
 | `add` | block | no | A node to add to the subnet; repeatable. See the add / remove block. |
 | `remove` | block | no | A node to remove from the subnet; repeatable. See the add / remove block. |
 
@@ -115,7 +115,7 @@ Nested in a proposal of kind "deploy_guestos": deploy_guestos_to_all_subnet_node
 
 ### `add / remove { }`
 
-Inside a resize block: a node to add to or remove from the subnet.
+Inside a membership block: a node to add to or remove from the subnet.
 
 | Field | Kind | Required | Description |
 |-------|------|----------|-------------|

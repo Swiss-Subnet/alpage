@@ -63,9 +63,9 @@ var SchemaBlocks = []SchemaBlock{
 		Type: Spec{},
 	},
 	{
-		Name: "resize", File: "proposals.hcl",
-		Doc:  "Nested in a proposal of kind \"resize\": change_subnet_membership. Holds add/remove node blocks.",
-		Type: resizeBody{},
+		Name: "membership", File: "proposals.hcl",
+		Doc:  "Nested in a proposal of kind \"membership\": change_subnet_membership. Holds add/remove node blocks.",
+		Type: membershipBody{},
 	},
 	{
 		Name: "deploy_guestos", File: "proposals.hcl",
@@ -74,7 +74,7 @@ var SchemaBlocks = []SchemaBlock{
 	},
 	{
 		Name: "add / remove", File: "proposals.hcl",
-		Doc:  "Inside a resize block: a node to add to or remove from the subnet.",
+		Doc:  "Inside a membership block: a node to add to or remove from the subnet.",
 		Type: Node{},
 	},
 }
@@ -116,14 +116,14 @@ var SchemaFieldDocs = map[string]string{
 	"Provider.neuron":         "Proposer neuron id.",
 	"Provider.fetch_root_key": "Whether to fetch the IC root key. Unset defaults to true for non-mainnet hosts.",
 
-	"Spec.kind":    "Proposal kind; selects the nested block (resize, deploy_guestos).",
+	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos).",
 	"Spec.title":   "Proposal title shown on the NNS.",
 	"Spec.summary": "Proposal summary (markdown).",
 	"Spec.url":     "Reference URL (e.g. forum thread).",
 
-	"resizeBody.subnet_id": "Subnet to resize (subnet.<name>.id).",
-	"resizeBody.add":       "A node to add to the subnet; repeatable. See the add / remove block.",
-	"resizeBody.remove":    "A node to remove from the subnet; repeatable. See the add / remove block.",
+	"membershipBody.subnet_id": "Subnet whose membership changes (subnet.<name>.id).",
+	"membershipBody.add":       "A node to add to the subnet; repeatable. See the add / remove block.",
+	"membershipBody.remove":    "A node to remove from the subnet; repeatable. See the add / remove block.",
 
 	"deployGuestosBody.subnet_id":          "Subnet whose nodes to upgrade (subnet.<name>.id).",
 	"deployGuestosBody.replica_version_id": "Replica version to deploy to every node in the subnet. Must be elected by the NNS: preflight checks the registry for a replica_version_<id> record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. --force submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable.",

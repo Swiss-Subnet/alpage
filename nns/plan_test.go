@@ -14,14 +14,14 @@ var (
 	subnetX = principal.MustDecode("3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe")
 )
 
-func TestPlanResizeClean(t *testing.T) {
+func TestPlanMembershipClean(t *testing.T) {
 	// current = {A}. Add C (new), remove A (present). No warnings.
-	r := ResizeProposal{
+	r := MembershipProposal{
 		SubnetID:      subnetX,
 		NodeIDsAdd:    []principal.Principal{nodeC},
 		NodeIDsRemove: []principal.Principal{nodeA},
 	}
-	plan := PlanResize(r, []string{nodeA.Encode()})
+	plan := PlanMembership(r, []string{nodeA.Encode()})
 	if plan.HasWarnings() {
 		t.Errorf("clean plan should have no warnings: %+v", plan.Ops)
 	}
@@ -30,10 +30,10 @@ func TestPlanResizeClean(t *testing.T) {
 	}
 }
 
-func TestPlanResizeNoopAdd(t *testing.T) {
+func TestPlanMembershipNoopAdd(t *testing.T) {
 	// Add B when B is already a member -> warning.
-	r := ResizeProposal{NodeIDsAdd: []principal.Principal{nodeB}}
-	plan := PlanResize(r, []string{nodeB.Encode()})
+	r := MembershipProposal{NodeIDsAdd: []principal.Principal{nodeB}}
+	plan := PlanMembership(r, []string{nodeB.Encode()})
 	if !plan.HasWarnings() {
 		t.Fatal("adding an existing member should warn")
 	}
@@ -42,10 +42,10 @@ func TestPlanResizeNoopAdd(t *testing.T) {
 	}
 }
 
-func TestPlanResizePhantomRemove(t *testing.T) {
+func TestPlanMembershipPhantomRemove(t *testing.T) {
 	// Remove C when C is not a member -> warning.
-	r := ResizeProposal{NodeIDsRemove: []principal.Principal{nodeC}}
-	plan := PlanResize(r, []string{nodeA.Encode(), nodeB.Encode()})
+	r := MembershipProposal{NodeIDsRemove: []principal.Principal{nodeC}}
+	plan := PlanMembership(r, []string{nodeA.Encode(), nodeB.Encode()})
 	if !plan.HasWarnings() {
 		t.Fatal("removing a non-member should warn")
 	}
@@ -56,8 +56,8 @@ func TestPlanResizePhantomRemove(t *testing.T) {
 
 func TestPlanAllNoOp(t *testing.T) {
 	// Remove A and B when neither is a member -> every op is a no-op.
-	r := ResizeProposal{NodeIDsRemove: []principal.Principal{nodeA, nodeB}}
-	plan := PlanResize(r, []string{nodeC.Encode()})
+	r := MembershipProposal{NodeIDsRemove: []principal.Principal{nodeA, nodeB}}
+	plan := PlanMembership(r, []string{nodeC.Encode()})
 	if !plan.AllNoOp() {
 		t.Errorf("all-phantom plan should be AllNoOp: %+v", plan.Ops)
 	}
@@ -68,26 +68,26 @@ func TestPlanAllNoOp(t *testing.T) {
 
 func TestPlanNotAllNoOp(t *testing.T) {
 	// Remove A (member, real) and B (not a member, no-op): mixed, not all-no-op.
-	r := ResizeProposal{NodeIDsRemove: []principal.Principal{nodeA, nodeB}}
-	plan := PlanResize(r, []string{nodeA.Encode()})
+	r := MembershipProposal{NodeIDsRemove: []principal.Principal{nodeA, nodeB}}
+	plan := PlanMembership(r, []string{nodeA.Encode()})
 	if plan.AllNoOp() {
 		t.Error("a plan with one real op is not AllNoOp")
 	}
 }
 
 func TestPlanEmptyNotAllNoOp(t *testing.T) {
-	if (ResizePlan{}).AllNoOp() {
+	if (MembershipPlan{}).AllNoOp() {
 		t.Error("an empty plan should not be AllNoOp")
 	}
 }
 
-func TestResizePreflightClean(t *testing.T) {
+func TestMembershipPreflightClean(t *testing.T) {
 	// Add C (new), remove A (present): no warnings -> empty report, Clean.
-	plan := PlanResize(ResizeProposal{
+	plan := PlanMembership(MembershipProposal{
 		NodeIDsAdd:    []principal.Principal{nodeC},
 		NodeIDsRemove: []principal.Principal{nodeA},
 	}, []string{nodeA.Encode()})
-	pf := resizePreflight(plan)
+	pf := membershipPreflight(plan)
 	if pf.Level != PreflightClean {
 		t.Errorf("clean plan should be Clean, got %v", pf.Level)
 	}
@@ -96,12 +96,12 @@ func TestResizePreflightClean(t *testing.T) {
 	}
 }
 
-func TestResizePreflightWarn(t *testing.T) {
+func TestMembershipPreflightWarn(t *testing.T) {
 	// Remove A (member, real) and B (phantom): mixed -> Warn, not NoOp.
-	plan := PlanResize(ResizeProposal{
+	plan := PlanMembership(MembershipProposal{
 		NodeIDsRemove: []principal.Principal{nodeA, nodeB},
 	}, []string{nodeA.Encode()})
-	pf := resizePreflight(plan)
+	pf := membershipPreflight(plan)
 	if pf.Level != PreflightWarn {
 		t.Errorf("a mixed plan with one real op must be Warn, got %v", pf.Level)
 	}
@@ -110,12 +110,12 @@ func TestResizePreflightWarn(t *testing.T) {
 	}
 }
 
-func TestResizePreflightNoOp(t *testing.T) {
+func TestMembershipPreflightNoOp(t *testing.T) {
 	// Remove A and B when neither is a member: every op is a no-op -> NoOp.
-	plan := PlanResize(ResizeProposal{
+	plan := PlanMembership(MembershipProposal{
 		NodeIDsRemove: []principal.Principal{nodeA, nodeB},
 	}, []string{nodeC.Encode()})
-	pf := resizePreflight(plan)
+	pf := membershipPreflight(plan)
 	if pf.Level != PreflightNoOp {
 		t.Errorf("an all-no-op plan must be NoOp, got %v", pf.Level)
 	}
@@ -212,11 +212,11 @@ func TestDeployGuestosPlanWithoutReleaseStillReports(t *testing.T) {
 }
 
 func TestPlanRenderShowsSignsAndWarnings(t *testing.T) {
-	r := ResizeProposal{
+	r := MembershipProposal{
 		NodeIDsAdd:    []principal.Principal{nodeB}, // already member -> warn
 		NodeIDsRemove: []principal.Principal{nodeA}, // member -> ok
 	}
-	plan := PlanResize(r, []string{nodeA.Encode(), nodeB.Encode()})
+	plan := PlanMembership(r, []string{nodeA.Encode(), nodeB.Encode()})
 	out := plan.Render()
 	if !strings.Contains(out, "+ "+nodeB.Encode()) {
 		t.Errorf("add line missing + sign: %q", out)

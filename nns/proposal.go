@@ -16,22 +16,22 @@ func (n *NNS) ProposerNeuron() governance.NeuronId {
 	return governance.NeuronId{Id: ProposerNeuronID}
 }
 
-// ResizeProposal describes a subnet-membership change (add/remove nodes).
-type ResizeProposal struct {
+// MembershipProposal describes a subnet-membership change (add/remove nodes).
+type MembershipProposal struct {
 	Meta
 	SubnetID      principal.Principal
 	NodeIDsAdd    []principal.Principal
 	NodeIDsRemove []principal.Principal
 }
 
-func (n *NNS) SubmitResize(neuron governance.NeuronId, p ResizeProposal) (uint64, error) {
-	return n.SubmitResizeAs(n.Proposer, neuron, p)
+func (n *NNS) SubmitMembership(neuron governance.NeuronId, p MembershipProposal) (uint64, error) {
+	return n.SubmitMembershipAs(n.Proposer, neuron, p)
 }
 
-// SubmitResizeAs submits an ExecuteNnsFunction(change_subnet_membership)
+// SubmitMembershipAs submits an ExecuteNnsFunction(change_subnet_membership)
 // proposal as an explicit caller. sender may be the neuron's controller or one
 // of its hotkeys; governance authorizes either to make proposals.
-func (n *NNS) SubmitResizeAs(sender principal.Principal, neuron governance.NeuronId, p ResizeProposal) (uint64, error) {
+func (n *NNS) SubmitMembershipAs(sender principal.Principal, neuron governance.NeuronId, p MembershipProposal) (uint64, error) {
 	return n.SubmitAs(sender, neuron, p)
 }
 
@@ -74,7 +74,7 @@ var funcName = map[int32]string{
 	int32(governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES): "deploy_guestos_to_all_subnet_nodes",
 }
 var renderer = map[int32]Action{
-	int32(governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP):           ResizeProposal{},
+	int32(governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP):           MembershipProposal{},
 	int32(governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES): DeployGuestosAction{},
 }
 

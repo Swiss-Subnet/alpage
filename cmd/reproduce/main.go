@@ -1,5 +1,5 @@
 // Command reproduce brings up a local NNS on PocketIC, submits the synthetic
-// resize fixture, and prints the decoded proposal. Run from the repo root.
+// membership fixture, and prints the decoded proposal. Run from the repo root.
 package main
 
 import (
@@ -43,15 +43,15 @@ func run() error {
 		return err
 	}
 
-	spec, err := nns.LoadSpec("nns/testdata/golden_src/proposals.hcl", "resize-fixture")
+	spec, err := nns.LoadSpec("nns/testdata/golden_src/proposals.hcl", "membership-fixture")
 	if err != nil {
 		return err
 	}
-	resize, err := spec.Proposal()
+	membership, err := spec.Proposal()
 	if err != nil {
 		return err
 	}
-	pid, err := n.SubmitResize(n.ProposerNeuron(), resize)
+	pid, err := n.SubmitMembership(n.ProposerNeuron(), membership)
 	if err != nil {
 		return err
 	}

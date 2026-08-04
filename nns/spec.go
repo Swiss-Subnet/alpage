@@ -14,7 +14,7 @@ type Node struct {
 	Label string `hcl:"label,optional"`
 }
 
-type resizeBody struct {
+type membershipBody struct {
 	SubnetID string `hcl:"subnet_id"`
 	Add      []Node `hcl:"add,block"`
 	Remove   []Node `hcl:"remove,block"`
@@ -129,8 +129,8 @@ func LoadSpec(path, name string) (*Spec, error) {
 // Single dispatch point: a new proposal type is a case here plus a body struct.
 func (s *Spec) Action() (Action, error) {
 	switch s.Kind {
-	case "resize":
-		var body resizeBody
+	case "membership":
+		var body membershipBody
 		if err := s.decodeRest(&body); err != nil {
 			return nil, err
 		}
@@ -146,7 +146,7 @@ func (s *Spec) Action() (Action, error) {
 		if err != nil {
 			return nil, fmt.Errorf("proposal %q: %w", s.Name, err)
 		}
-		return ResizeProposal{
+		return MembershipProposal{
 			Meta:     s.Meta(),
 			SubnetID: subnet, NodeIDsAdd: add, NodeIDsRemove: remove,
 		}, nil
@@ -199,16 +199,16 @@ func decodeNodes(ns []Node) ([]principal.Principal, error) {
 	return out, nil
 }
 
-// Proposal returns the resize proposal for a resize spec (used by the reproduce
-// command and e2e tests), erroring if the spec is not a resize.
-func (s *Spec) Proposal() (ResizeProposal, error) {
+// Proposal returns the membership proposal for a membership spec (used by the reproduce
+// command and e2e tests), erroring if the spec is not a membership change.
+func (s *Spec) Proposal() (MembershipProposal, error) {
 	a, err := s.Action()
 	if err != nil {
-		return ResizeProposal{}, err
+		return MembershipProposal{}, err
 	}
-	r, ok := a.(ResizeProposal)
+	r, ok := a.(MembershipProposal)
 	if !ok {
-		return ResizeProposal{}, fmt.Errorf("proposal %q is kind %q, not resize", s.Name, s.Kind)
+		return MembershipProposal{}, fmt.Errorf("proposal %q is kind %q, not membership", s.Name, s.Kind)
 	}
 	return r, nil
 }

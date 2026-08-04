@@ -5,9 +5,9 @@ Proposal 1
 Consider gracefully handling failures from this canister or altering the canister to handle exceptions. See documentation: https://docs.internetcomputer.org/references/execution-errors#trapped-explicitly
   Topic:  SubnetManagement (7)
   Proposer neuron: 1
-  Title:   Resize fixture
+  Title:   Membership fixture
   Summary: Golden fixture: remove two nodes.
-  URL:     https://forum.dfinity.org/t/test-resize-fixture
+  URL:     https://forum.dfinity.org/t/test-membership-fixture
   Action:  ExecuteNnsFunction #31 (change_subnet_membership)
     subnet_id: wmzac-nabae-aqcai-baeaq-caiba-eaqca-ibaea-qcaib-aeaqc-aibae-aqc
     nodes added (0):

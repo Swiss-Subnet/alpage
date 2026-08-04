@@ -79,15 +79,16 @@ func payloadSHA256(a Action) (string, error) {
 	return fmt.Sprintf("%x", sum), nil
 }
 
-// --- resize: change_subnet_membership (add/remove nodes) ---
+// --- membership: change_subnet_membership (add/remove nodes) ---
 
-// ResizeProposal is the "resize subnet" action (e.g. mainnet 141235, 142931).
-func (r ResizeProposal) Kind() string { return "resize" }
-func (r ResizeProposal) NnsFunction() governancepb.NnsFunction {
+// MembershipProposal changes a subnet's node set: adds, removes, or both at
+// once (a swap, which leaves the size unchanged). E.g. mainnet 141235, 142931.
+func (r MembershipProposal) Kind() string { return "membership" }
+func (r MembershipProposal) NnsFunction() governancepb.NnsFunction {
 	return governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP
 }
 
-func (r ResizeProposal) PayloadBlob() ([]byte, error) {
+func (r MembershipProposal) PayloadBlob() ([]byte, error) {
 	payload := registry.ChangeSubnetMembershipPayload{
 		NodeIdsAdd:    r.NodeIDsAdd,
 		SubnetId:      r.SubnetID,
@@ -100,16 +101,16 @@ func (r ResizeProposal) PayloadBlob() ([]byte, error) {
 	return blob, nil
 }
 
-// Preflight diffs the resize against the subnet's current on-chain membership.
-func (r ResizeProposal) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
+// Preflight diffs the change against the subnet's current on-chain membership.
+func (r MembershipProposal) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
 	current, err := FetchSubnetMembership(host, fetchRootKey, r.SubnetID, opts...)
 	if err != nil {
 		return Preflight{}, fmt.Errorf("fetch membership: %w", err)
 	}
-	return resizePreflight(PlanResize(r, current)), nil
+	return membershipPreflight(PlanMembership(r, current)), nil
 }
 
-func (r ResizeProposal) RenderPayload(b *strings.Builder, blob []byte) {
+func (r MembershipProposal) RenderPayload(b *strings.Builder, blob []byte) {
 	var p registry.ChangeSubnetMembershipPayload
 	if err := candid.Unmarshal(blob, []any{&p}); err != nil {
 		fmt.Fprintf(b, "    <undecodable payload: %v>\n", err)

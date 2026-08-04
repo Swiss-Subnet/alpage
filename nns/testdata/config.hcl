@@ -8,11 +8,11 @@ provider {
   neuron = 1
 }
 
-proposal "resize-example" {
-  kind  = "resize"
-  title = "Resize fixture"
+proposal "membership-example" {
+  kind  = "membership"
+  title = "Membership fixture"
 
-  resize {
+  membership {
     subnet_id = subnet.test.id
     remove { id = node.n1.id }
   }
