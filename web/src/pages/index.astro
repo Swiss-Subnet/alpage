@@ -16,20 +16,20 @@ node "zh1_01" {
   operator = node_operator.ssn.id
 }`;
 
-const proposalConfig = `proposal "resize-zh1" {
-  kind    = "resize"
-  title   = "Resize Swiss subnet"
+const proposalConfig = `proposal "shrink-zh1" {
+  kind    = "membership"
+  title   = "Shrink Swiss subnet"
   summary = "Remove two nodes from the Swiss subnet."
   url     = "https://forum.dfinity.org/t/..."
 
-  resize {
+  membership {
     subnet_id = subnet.swiss.id
     remove { id = node.zh1_01.id }
     remove { id = node.zh1_02.id }
   }
 }`;
 
-const applyRun = `$ alp apply resize-zh1 --identity key.pem --yes
+const applyRun = `$ alp apply shrink-zh1 --identity key.pem --yes
 checking neuron 12345 can submit ... ok
 dry-run on PocketIC ............... ok
 payload hash 9f2c1a...
@@ -92,7 +92,7 @@ const commands = [
 ];
 
 const kinds = [
-  { kind: "resize", payload: "change_subnet_membership", desc: "Add or remove nodes on a subnet." },
+  { kind: "membership", payload: "change_subnet_membership", desc: "Add or remove nodes on a subnet." },
   { kind: "deploy_guestos", payload: "deploy_guestos_to_all_subnet_nodes", desc: "Upgrade every node in a subnet to a replica version." },
 ];
 ---
@@ -278,8 +278,8 @@ const kinds = [
         <div class="engine-point">
           <h3>Membership as a reviewed diff</h3>
           <p>
-            Rotating a provider out of an engine is a <code>resize</code> proposal generated from a
-            config change, dry-run locally, and recorded with the id that executed it.
+            Rotating a provider out of an engine is a <code>membership</code> proposal generated from
+            a config change, dry-run locally, and recorded with the id that executed it.
           </p>
         </div>
       </div>

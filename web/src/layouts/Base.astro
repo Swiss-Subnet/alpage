@@ -10,6 +10,20 @@ const { title, description } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const repo = "https://github.com/swiss-subnet/alpage";
 
+// The site tracks main, so the docs can be ahead of the newest release; naming
+// the commit it was built from is what makes the schema on this page
+// identifiable. GITHUB_SHA is set in Actions; fall back to git for local builds.
+let commit = process.env.GITHUB_SHA ?? "";
+if (!commit) {
+  try {
+    const { execSync } = await import("node:child_process");
+    commit = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+  } catch {
+    commit = "";
+  }
+}
+const shortCommit = commit.slice(0, 7);
+
 const nav = [
   { href: `${base}/#how`, label: "How it works" },
   { href: `${base}/#engines`, label: "Cloud Engines" },
@@ -65,6 +79,13 @@ const nav = [
           <a href={repo}>Source</a>
           <a href={`${base}/docs/licensing/`}>Licensing</a>
           <a href="mailto:licensing@subnet.ch">licensing@subnet.ch</a>
+          {
+            shortCommit && (
+              <a href={`${repo}/commit/${commit}`} class="footer-commit">
+                Built from <code>{shortCommit}</code>
+              </a>
+            )
+          }
         </p>
       </div>
     </footer>
@@ -152,6 +173,18 @@ const nav = [
         display: flex;
         gap: 1.25rem;
         flex-wrap: wrap;
+      }
+
+      .footer-commit {
+        margin-left: auto;
+        color: var(--text-faint);
+      }
+
+      .footer-commit code {
+        font-size: 0.85em;
+        background: none;
+        border: none;
+        padding: 0;
       }
 
       @media (max-width: 720px) {
