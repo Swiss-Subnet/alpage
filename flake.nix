@@ -33,6 +33,7 @@
         genBindingsHash = "sha256-GNH1zK9sjdyHupYWMQ9nCOfkqtqd9sk6xM4MckWcvsY=";
         genProtoHash = "sha256-6Yok/4Z7/fhG1acsvBjIwcERqjj8jCWj7c3R2bedeWc=";
         alpVendorHash = "sha256-v/XCV+RQTqPNDHcK2tcj8G2kMIv4R22cqkSTaLWmIIQ=";
+        siteNpmDepsHash = "sha256-qXcEt1n1jtucPf8YGAMWJ7+tkCMKVpcDzgLAumLVsEQ=";
 
         pocketIcPlatform =
           {
@@ -207,6 +208,35 @@
           ];
           doCheck = false;
         };
+
+        # The landing page (web/). src is the repo root, not web/, because the
+        # docs pages render ../docs/*.md at build time; the filter keeps the
+        # closure to just those two trees so a Go edit does not rebuild the site.
+        site = pkgs.buildNpmPackage {
+          pname = "alpage-site";
+          version = alpVersion;
+          src = pkgs.lib.cleanSourceWith {
+            name = "source";
+            src = ./.;
+            filter =
+              path: type:
+              let
+                rel = pkgs.lib.removePrefix (toString ./. + "/") (toString path);
+              in
+              rel == "web" || pkgs.lib.hasPrefix "web/" rel || rel == "docs" || pkgs.lib.hasPrefix "docs/" rel;
+          };
+          sourceRoot = "source/web";
+          npmDepsHash = siteNpmDepsHash;
+          nodejs = pkgs.nodejs_24;
+          # sharp ships prebuilt binaries it wants to fetch; astro only needs it
+          # for image optimisation, which this site does not use.
+          npmFlags = [ "--ignore-scripts" ];
+          installPhase = ''
+            runHook preInstall
+            cp -r dist $out
+            runHook postInstall
+          '';
+        };
       in
       {
         packages = {
@@ -215,6 +245,7 @@
             pocketIc
             genBindings
             genProto
+            site
             ;
           alp = alp;
           default = alp;
@@ -229,6 +260,7 @@
             pkgs.nixfmt
             pkgs.protobuf
             pkgs.protoc-gen-go
+            pkgs.nodejs_24
             pocketIc
           ];
 

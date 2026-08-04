@@ -121,7 +121,7 @@ jobs:
           - Published: ${published}
           - Change Date: ${change} (this version converts to Apache License 2.0)
 
-          Running Alpage against your own fleet of up to 10 nodes is free, including in production; evaluation and testing are free at any fleet size. Beyond 10 nodes, managing fleets for third parties, or offering a hosted service built on Alpage needs a commercial licence: see docs/licensing.md or contact licensing@subnet.ch.
+          Running Alpage against your own fleet of up to 5 nodes is free, including in production; evaluation and testing are free at any fleet size. Beyond 5 nodes, managing fleets for third parties, or offering a hosted service built on Alpage needs a commercial licence: see docs/licensing.md or contact licensing@subnet.ch.
           EOF
           cat dist/RELEASE_NOTES.md
 

@@ -1,0 +1,168 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const repo = "https://github.com/swiss-subnet/alpage";
+
+const nav = [
+  { href: `${base}/#how`, label: "How it works" },
+  { href: `${base}/#engines`, label: "Cloud Engines" },
+  { href: `${base}/#install`, label: "Install" },
+  { href: `${base}/docs/config/`, label: "Config Reference" },
+  { href: `${base}/docs/licensing/`, label: "Licensing" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <meta name="theme-color" content="#2f6f8f" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href={`${base}/`}>
+          <img class="brand-mark" src={`${base}/favicon.svg`} alt="" width="18" height="18" />
+          alpage
+        </a>
+        <nav aria-label="Main">
+          <ul>
+            {nav.map((i) => <li><a href={i.href}>{i.label}</a></li>)}
+            <li><a href={repo}>GitHub</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <p>
+          Copyright (c) 2026 Swiss Subnet AG, Zug, Switzerland. Licensed under the
+          <a href={`${repo}/blob/main/LICENSE`}>Business Source License 1.1</a>.
+        </p>
+        <p class="footer-links">
+          <a href={repo}>Source</a>
+          <a href={`${base}/docs/licensing/`}>Licensing</a>
+          <a href="mailto:licensing@subnet.ch">licensing@subnet.ch</a>
+        </p>
+      </div>
+    </footer>
+
+    <style>
+      .site-header {
+        border-bottom: 1px solid var(--border);
+        background: color-mix(in srgb, var(--bg) 85%, transparent);
+        backdrop-filter: blur(8px);
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+        min-height: 60px;
+        flex-wrap: wrap;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-family: var(--mono);
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text);
+        text-decoration: none;
+        letter-spacing: -0.01em;
+      }
+
+      .brand-mark {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        display: block;
+      }
+
+      nav ul {
+        display: flex;
+        gap: 1.35rem;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        flex-wrap: wrap;
+      }
+
+      nav a {
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 0.9rem;
+      }
+
+      nav a:hover {
+        color: var(--accent);
+      }
+
+      .site-footer {
+        border-top: 1px solid var(--border);
+        margin-top: 5rem;
+        padding: 2.5rem 0;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+      }
+
+      /* No measure cap here: it is a single credit line, not body prose, and
+         capping it wraps the licence name onto its own line. */
+      .footer-inner {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 1.5rem 2.5rem;
+        flex-wrap: wrap;
+      }
+
+      .footer-inner p {
+        margin: 0;
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 720px) {
+        .header-inner {
+          padding-block: 0.75rem;
+        }
+
+        nav ul {
+          gap: 1rem;
+        }
+      }
+    </style>
+  </body>
+</html>

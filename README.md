@@ -96,6 +96,6 @@ git push origin v0.1.0
 
 Copyright (c) 2026 Swiss Subnet AG, Zug, Switzerland. Licensed under the [Business Source License 1.1](LICENSE).
 
-Running Alpage against your own fleet of up to 10 nodes is free, including in production, and evaluation is always free at any fleet size. Beyond 10 nodes, managing fleets for third parties, or offering a hosted service built on Alpage needs a commercial license. Each released version converts to Apache-2.0 four years after it is published.
+Running Alpage against your own fleet of up to 5 nodes is free, including in production, and evaluation is always free at any fleet size. Beyond 5 nodes, managing fleets for third parties, or offering a hosted service built on Alpage needs a commercial license. Each released version converts to Apache-2.0 four years after it is published.
 
 See [docs/licensing.md](docs/licensing.md) for the plain-language version, or contact licensing@subnet.ch. Contributions are accepted under the DCO; see [CONTRIBUTING.md](CONTRIBUTING.md).

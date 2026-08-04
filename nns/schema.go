@@ -16,6 +16,7 @@ type SchemaBlock struct {
 	Doc    string   // one-line description of the block
 	Type   any      // zero value of the decoding struct; reflected for fields
 	Labels []string // block label names, e.g. ["name"] for node "foo" {}
+	Since  string   // tag that introduced the block under this name
 }
 
 // SchemaBlocks is the full set of documented top-level HCL blocks. Nested blocks
@@ -24,58 +25,69 @@ type SchemaBlock struct {
 var SchemaBlocks = []SchemaBlock{
 	{
 		Name: "subnet", File: "resources.hcl", Labels: []string{"name"},
-		Doc:  "A subnet, referenced from proposals and nodes as subnet.<name>.id.",
-		Type: Subnet{},
+		Doc:   "A subnet, referenced from proposals and nodes as subnet.<name>.id.",
+		Type:  Subnet{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "data_center", File: "resources.hcl", Labels: []string{"name"},
-		Doc:  "A registry data center, referenced by node_operator as data_center.<name>.id.",
-		Type: DataCenter{},
+		Doc:   "A registry data center, referenced by node_operator as data_center.<name>.id.",
+		Type:  DataCenter{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "node_provider", File: "resources.hcl", Labels: []string{"name"},
-		Doc:  "A node provider, referenced by node_operator as node_provider.<name>.id.",
-		Type: NodeProvider{},
+		Doc:   "A node provider, referenced by node_operator as node_provider.<name>.id.",
+		Type:  NodeProvider{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "node_operator", File: "resources.hcl", Labels: []string{"name"},
-		Doc:  "A node operator, referenced by node as node_operator.<name>.id.",
-		Type: NodeOperator{},
+		Doc:   "A node operator, referenced by node as node_operator.<name>.id.",
+		Type:  NodeOperator{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "guestos_version", File: "resources.hcl", Labels: []string{"name"},
-		Doc:  "A named GuestOS/replica version, referenced by node as guestos_version.<name>.id.",
-		Type: GuestosVersionRes{},
+		Doc:   "A named GuestOS/replica version, referenced by node as guestos_version.<name>.id.",
+		Type:  GuestosVersionRes{},
+		Since: "v0.3.0",
 	},
 	{
 		Name: "node", File: "resources.hcl", Labels: []string{"name"},
-		Doc:  "A node, referenced from proposals as node.<name>.id.",
-		Type: NodeRes{},
+		Doc:   "A node, referenced from proposals as node.<name>.id.",
+		Type:  NodeRes{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "provider", File: "proposals.hcl",
-		Doc:  "Global submission settings; CLI flags override these.",
-		Type: Provider{},
+		Doc:   "Global submission settings; CLI flags override these.",
+		Type:  Provider{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "proposal", File: "proposals.hcl", Labels: []string{"name"},
-		Doc:  "One NNS proposal. Carries common metadata plus a nested block named after its kind.",
-		Type: Spec{},
+		Doc:   "One NNS proposal. Carries common metadata plus a nested block named after its kind.",
+		Type:  Spec{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "membership", File: "proposals.hcl",
-		Doc:  "Nested in a proposal of kind \"membership\": change_subnet_membership. Holds add/remove node blocks.",
-		Type: membershipBody{},
+		Doc:   "Nested in a proposal of kind \"membership\": change_subnet_membership. Holds add/remove node blocks. Renamed from resize in v0.3.0; a config written for v0.2.0 or earlier must rename the block and its kind.",
+		Type:  membershipBody{},
+		Since: "v0.3.0",
 	},
 	{
 		Name: "deploy_guestos", File: "proposals.hcl",
-		Doc:  "Nested in a proposal of kind \"deploy_guestos\": deploy_guestos_to_all_subnet_nodes.",
-		Type: deployGuestosBody{},
+		Doc:   "Nested in a proposal of kind \"deploy_guestos\": deploy_guestos_to_all_subnet_nodes.",
+		Type:  deployGuestosBody{},
+		Since: "v0.1.0",
 	},
 	{
 		Name: "add / remove", File: "proposals.hcl",
-		Doc:  "Inside a membership block: a node to add to or remove from the subnet.",
-		Type: Node{},
+		Doc:   "Inside a membership block: a node to add to or remove from the subnet.",
+		Type:  Node{},
+		Since: "v0.1.0",
 	},
 }
 
@@ -130,4 +142,64 @@ var SchemaFieldDocs = map[string]string{
 
 	"Node.id":    "Node id (node.<name>.id).",
 	"Node.label": "Optional human-readable name.",
+}
+
+// SchemaUnreleased is the version Since values carry before that version is
+// tagged; the docs list it as unreleased rather than linking a tag that does
+// not exist yet. Bump it when cutting a release that changes the schema.
+const SchemaUnreleased = "v0.3.0"
+
+// SchemaFieldSince maps "<struct>.<hclname>" to the release tag that introduced
+// the field, so the generated docs say which version a reader's binary needs.
+// A field renamed or moved to a renamed block counts as new at the rename.
+// Kept in lockstep with SchemaFieldDocs by TestSchemaFieldSinceCoverage.
+var SchemaFieldSince = map[string]string{
+	"Subnet.id":            "v0.1.0",
+	"Subnet.label":         "v0.1.0",
+	"Subnet.sev_enabled":   "v0.1.1",
+	"Subnet.type":          "v0.2.0",
+	"Subnet.cost_schedule": "v0.2.0",
+	"Subnet.admins":        "v0.2.0",
+
+	"DataCenter.id":     "v0.1.0",
+	"DataCenter.label":  "v0.1.0",
+	"DataCenter.region": "v0.1.0",
+
+	"NodeProvider.id":    "v0.1.0",
+	"NodeProvider.label": "v0.1.0",
+
+	"NodeOperator.id":       "v0.1.0",
+	"NodeOperator.label":    "v0.1.0",
+	"NodeOperator.provider": "v0.1.0",
+	"NodeOperator.dc":       "v0.1.0",
+
+	"GuestosVersionRes.id":    "v0.3.0",
+	"GuestosVersionRes.label": "v0.3.0",
+
+	"NodeRes.id":              "v0.1.0",
+	"NodeRes.label":           "v0.1.0",
+	"NodeRes.subnet":          "v0.1.0",
+	"NodeRes.operator":        "v0.1.0",
+	"NodeRes.decommissioned":  "v0.1.1",
+	"NodeRes.guestos_version": "v0.2.0",
+
+	"Provider.host":           "v0.1.0",
+	"Provider.neuron":         "v0.1.0",
+	"Provider.fetch_root_key": "v0.1.0",
+
+	"Spec.kind":    "v0.1.0",
+	"Spec.title":   "v0.1.0",
+	"Spec.summary": "v0.1.0",
+	"Spec.url":     "v0.1.0",
+
+	// The block was resize until v0.3.0; its fields date from the rename.
+	"membershipBody.subnet_id": "v0.3.0",
+	"membershipBody.add":       "v0.3.0",
+	"membershipBody.remove":    "v0.3.0",
+
+	"deployGuestosBody.subnet_id":          "v0.1.0",
+	"deployGuestosBody.replica_version_id": "v0.1.0",
+
+	"Node.id":    "v0.1.0",
+	"Node.label": "v0.1.0",
 }

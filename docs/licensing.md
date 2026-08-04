@@ -6,11 +6,11 @@ BUSL is source-available, not open source. The source is public, you can read it
 
 ## The short version
 
-Running Alpage against your own fleet of up to 10 nodes is free, including in production. Beyond 10 nodes, or if you manage fleets for other people, you need a commercial licence from Swiss Subnet AG. Evaluating and testing is always free, at any fleet size.
+Running Alpage against your own fleet of up to 5 nodes is free, including in production. Beyond 5 nodes, or if you manage fleets for other people, you need a commercial licence from Swiss Subnet AG. Evaluating and testing is always free, at any fleet size.
 
 ## No licence needed
 
-- Running `alp apply`, `alp status`, `alp reconcile`, or any other subcommand against node machines and subnets you own or operate, up to 10 node machines in total.
+- Running `alp apply`, `alp status`, `alp reconcile`, or any other subcommand against node machines and subnets you own or operate, up to 5 node machines in total.
 - Doing so in production, indefinitely, with no fee and no registration.
 - Running Alpage in your own CI as a drift gate (`alp reconcile` exits nonzero on drift).
 - Reading, modifying, and forking the source for your own use.
@@ -19,7 +19,7 @@ Running Alpage against your own fleet of up to 10 nodes is free, including in pr
 
 ## Commercial licence needed
 
-- Production use across **more than 10 node machines**. Nodes are counted across your whole organisation, including affiliates under common control, whether or not they are currently assigned to a subnet.
+- Production use across **more than 5 node machines**. Nodes are counted across your whole organisation, including affiliates under common control, whether or not they are currently assigned to a subnet.
 - Providing node or fleet management **as part of your own service offering** to third parties. Operating clients' fleets as a business needs a licence regardless of how many nodes are involved.
 - Offering Alpage, or a service built on it, to third parties on a hosted basis: a dashboard, a managed fleet-management product, a monitoring service that submits proposals.
 - Embedding Alpage's source or binary in such an offering, or packaging your offering so that Alpage must be fetched for it to work.

@@ -10,3 +10,8 @@ result
 *.pem
 # goic installed for binding generation in CI
 /.gobin/
+# Landing page build artifacts (web/package-lock.json IS committed: the nix
+# derivation pins npmDepsHash against it)
+/web/node_modules/
+/web/dist/
+/web/.astro/

@@ -1,0 +1,705 @@
+---
+import Base from "../layouts/Base.astro";
+import CodeBlock from "../components/CodeBlock.astro";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const repo = "https://github.com/swiss-subnet/alpage";
+
+const heroConfig = `subnet "swiss" {
+  id    = "3zsyy-cnoqf-...-lqe"
+  label = "Swiss Subnet"
+}
+
+node "zh1_01" {
+  id       = "3wbrf-zokqb-...-nae"
+  subnet   = subnet.swiss.id
+  operator = node_operator.ssn.id
+}`;
+
+const proposalConfig = `proposal "resize-zh1" {
+  kind    = "resize"
+  title   = "Resize Swiss subnet"
+  summary = "Remove two nodes from the Swiss subnet."
+  url     = "https://forum.dfinity.org/t/..."
+
+  resize {
+    subnet_id = subnet.swiss.id
+    remove { id = node.zh1_01.id }
+    remove { id = node.zh1_02.id }
+  }
+}`;
+
+const applyRun = `$ alp apply resize-zh1 --identity key.pem --yes
+checking neuron 12345 can submit ... ok
+dry-run on PocketIC ............... ok
+payload hash 9f2c1a...
+type 'submit' to proceed: submit
+submitted proposal 134221
+state.json updated`;
+
+// The real consumption pattern: a config repo pins alp as a flake input at a
+// release tag (see ssn-config), rather than cloning alpage.
+const consumeFlake = `inputs.alpage = {
+  url = "github:swiss-subnet/alpage?ref=refs/tags/v0.2.0";
+  inputs.nixpkgs.follows = "nixpkgs";
+};`;
+
+const consumeRun = `$ nix develop            # alp on PATH
+$ alp plan swiss-wave1   # against live state
+$ alp reconcile          # drift check, CI gate
+$ alp apply swiss-wave1 --identity hotkey.pem`;
+
+const engineConfig = `subnet "engine" {
+  id            = "..."
+  label         = "Production engine"
+  type          = "cloud_engine"
+  cost_schedule = "free"
+
+  # Declaring none asserts none: an admin
+  # added on-chain shows up as drift.
+  admins = [
+    "ay4xt-...-cai",
+  ]
+}`;
+
+const pillars = [
+  {
+    title: "Declare, don't click",
+    body: "Fleet membership and replica versions live in committed HCL. Review a node removal as a diff in a pull request instead of transcribing principals into a proposal form.",
+  },
+  {
+    title: "Verified before it lands",
+    body: "Every apply first executes the exact payload against a local NNS running the real governance and registry canisters (via PocketIC). If it will not execute there, it never reaches the live network.",
+  },
+  {
+    title: "State you can audit",
+    body: "One state.json records the proposal id, submitter principal, neuron, host, payload hash, and timestamp per change. Who submitted what, when, and from which config.",
+  },
+  {
+    title: "Drift is a CI failure",
+    body: "reconcile diffs your declared resources against live on-chain state and exits nonzero, so a fleet that drifted out of band breaks the build instead of surprising you.",
+  },
+];
+
+const commands = [
+  { cmd: "apply", desc: "Check the identity can submit, dry-run on a local NNS, submit to the live network, record state." },
+  { cmd: "plan", desc: "Reconcile a proposal against live on-chain state before submitting. Read-only counterpart to apply's dry-run." },
+  { cmd: "import", desc: "Adopt an already-submitted proposal into state without submitting it." },
+  { cmd: "list", desc: "Show each declared proposal as in-sync, drifted, or not-submitted (config vs state)." },
+  { cmd: "status", desc: "Read recorded proposals back from governance for their real on-chain status and tally." },
+  { cmd: "reconcile", desc: "Read-only diff of declared resources against live on-chain state. Exits nonzero on drift." },
+  { cmd: "registry subnet", desc: "Query a subnet's current membership, emitted as a resources.hcl fragment." },
+];
+
+const kinds = [
+  { kind: "resize", payload: "change_subnet_membership", desc: "Add or remove nodes on a subnet." },
+  { kind: "deploy_guestos", payload: "deploy_guestos_to_all_subnet_nodes", desc: "Upgrade every node in a subnet to a replica version." },
+];
+---
+
+<Base
+  title="Alpage - Declarative Node-fleet Management for the Internet Computer"
+  description="Declare your Internet Computer node fleet in committed config; Alpage submits the NNS proposals that realise it, rehearsed on a local NNS first and recorded in auditable state."
+>
+  <section class="hero">
+    <div class="wrap hero-inner">
+      <div class="hero-copy">
+        <p class="eyebrow">Node-fleet management for the Internet Computer</p>
+        <h1>Your fleet, as committed config.</h1>
+        <p class="lede">
+          Alpage manages Internet Computer nodes the way Terraform manages infrastructure: declare
+          the desired state in version control, and the tool submits the NNS proposals that realise
+          it. Every change is rehearsed against a local copy of the NNS before it can touch the
+          live network.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="#install">Get started</a>
+          <a class="btn" href={repo}>View source</a>
+        </div>
+        <p class="provenance">
+          Built and used by <a href="https://subnet.ch">Swiss Subnet AG</a> to run the Swiss
+          subnet.
+        </p>
+      </div>
+
+      <div class="hero-side">
+        <CodeBlock code={heroConfig} lang="hcl" label="resources.hcl" />
+        <div class="notice">
+          <span aria-hidden="true">&#9888;</span>
+          <p>
+            <strong>Early days.</strong> Alpage is a young project under active development. It
+            submits real NNS proposals against real infrastructure, so treat it accordingly: the
+            CLI surface, the config schema, and the state file format may still change between
+            releases.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap band" id="how">
+    <div class="flow">
+      <div class="flow-step">
+        <span class="flow-num">1</span>
+        <h3>Edit config</h3>
+        <p>Declare the change in <code>proposals.hcl</code>, referencing nodes and subnets from <code>resources.hcl</code>.</p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">&rarr;</div>
+      <div class="flow-step">
+        <span class="flow-num">2</span>
+        <h3>Dry-run</h3>
+        <p>Alpage replays the exact payload against a local copy of the NNS. A payload that fails there stops here.</p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">&rarr;</div>
+      <div class="flow-step">
+        <span class="flow-num">3</span>
+        <h3>Submit</h3>
+        <p>The proposal goes to live governance from your neuron, after an explicit typed confirmation.</p>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">&rarr;</div>
+      <div class="flow-step">
+        <span class="flow-num">4</span>
+        <h3>Record</h3>
+        <p>The proposal id, submitter, payload hash, and timestamp land in <code>state.json</code>, committed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap band">
+    <div class="split">
+      <div>
+        <h2>Declare the change</h2>
+        <p class="section-lede">
+          One <code>proposal</code> block per change, with a <code>kind</code> and a matching nested
+          block. Node and subnet ids come from named resources, so a principal is written once and
+          referenced by name everywhere else.
+        </p>
+        <CodeBlock code={proposalConfig} lang="hcl" label="proposals.hcl" />
+      </div>
+      <div>
+        <h2>Apply it</h2>
+        <p class="section-lede">
+          Alpage fails fast on a wrong identity, refuses to resubmit a proposal already in state
+          without <code>--force</code>, and writes state only after governance accepts the
+          submission.
+        </p>
+        <CodeBlock code={applyRun} lang="console" label="terminal" />
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap band">
+    <h2>Why it works this way</h2>
+    <div class="pillars">
+      {
+        pillars.map((p) => (
+          <article class="pillar">
+            <h3>{p.title}</h3>
+            <p>{p.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="wrap band">
+    <h2>Commands</h2>
+    <p class="section-lede">
+      The CLI is <code>alp</code>. Five of the seven subcommands are strictly read-only; only
+      <code>apply</code> submits, and only <code>import</code> writes state without submitting.
+    </p>
+    <dl class="commands">
+      {
+        commands.map((c) => (
+          <div class="command">
+            <dt><code>alp {c.cmd}</code></dt>
+            <dd>{c.desc}</dd>
+          </div>
+        ))
+      }
+    </dl>
+  </section>
+
+  <section class="wrap band">
+    <h2>Proposal kinds</h2>
+    <p class="section-lede">
+      Each kind maps to one NNS proposal payload. Adding a kind is one <code>Action</code>
+      implementation plus a decode case; state, dry-run, submit, and drift detection are all
+      kind-agnostic.
+    </p>
+    <div class="kinds">
+      {
+        kinds.map((k) => (
+          <div class="kind">
+            <code class="kind-name">{k.kind}</code>
+            <code class="kind-payload">{k.payload}</code>
+            <p>{k.desc}</p>
+          </div>
+        ))
+      }
+    </div>
+    <p class="aside">
+      Every block and field is documented in the
+      <a href={`${base}/docs/config/`}>config reference</a>, generated from the Go struct tags.
+    </p>
+  </section>
+
+  <section class="wrap band" id="engines">
+    <h2>Built for Cloud Engines</h2>
+    <p class="section-lede">
+      A <a href="https://internetcomputer.org/wiki/cloud-engines/">Cloud Engine</a> is a subnet you
+      configure and operate yourself: you pick the nodes, the providers, and the jurisdictions, and
+      you change them over time. Adding nodes, removing them, and moving between operators or
+      geographies is exactly the lifecycle Alpage exists to make routine, reviewable, and
+      repeatable.
+    </p>
+    <div class="split">
+      <div>
+        <CodeBlock code={engineConfig} lang="hcl" label="resources.hcl" />
+      </div>
+      <div class="engine-points">
+        <div class="engine-point">
+          <h3>Engine fields are first-class</h3>
+          <p>
+            Declare <code>type</code>, <code>cost_schedule</code>, and <code>admins</code> on the
+            subnet and Alpage reconciles each against the live registry record, so console-side
+            changes surface as drift instead of going unnoticed.
+          </p>
+        </div>
+        <div class="engine-point">
+          <h3>Invalid engines fail at plan time</h3>
+          <p>
+            The registry's own invariants are checked before submission: an engine must be on the
+            free cost schedule, and admins are allowed only on an engine or a rented subnet, capped
+            at ten. A declaration the registry would refuse errors locally, not as a failed
+            proposal.
+          </p>
+        </div>
+        <div class="engine-point">
+          <h3>Membership as a reviewed diff</h3>
+          <p>
+            Rotating a provider out of an engine is a <code>resize</code> proposal generated from a
+            config change, dry-run locally, and recorded with the id that executed it.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap band" id="install">
+    <h2>Getting Started</h2>
+    <p class="section-lede">
+      Alpage is not something you install once and run ad hoc: it is pinned by the repository that
+      holds your config. Add <code>alp</code> as a flake input at a release tag, and every operator
+      and CI run gets the identical binary that produced the state file.
+    </p>
+    <div class="install-grid">
+      <div class="install-steps">
+        <CodeBlock code={consumeFlake} lang="nix" label="your config repo's flake.nix" />
+        <CodeBlock code={consumeRun} lang="console" label="terminal" />
+      </div>
+      <div class="install-note">
+        <p>
+          Bump the pinned tag and run <code>nix flake update alpage</code> to adopt a new release.
+          Because the version is stamped from the tag, <code>alp version</code> tells you exactly
+          which binary submitted any recorded proposal.
+        </p>
+        <p>
+          Prefer a plain binary? Tagged releases carry prebuilt <code>alp</code> for linux and
+          darwin on amd64 and arm64, with <code>.sha256</code> sums, on the
+          <a href={`${repo}/releases`}>releases page</a>.
+        </p>
+        <p>
+          To work on Alpage itself, the toolchain (Go, PocketIC, IC canisters) is pinned in its own
+          flake: <code>nix develop --command go test ./...</code>. See
+          <a href={`${repo}/blob/main/CONTRIBUTING.md`}>CONTRIBUTING.md</a>; contributions are
+          accepted under the DCO.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap band">
+    <div class="license-panel">
+      <h2>Licensing</h2>
+      <p>
+        Running Alpage against your own fleet of up to 5 nodes is free, including in production,
+        and evaluation is always free at any fleet size. Beyond 5 nodes, managing fleets for third
+        parties, or offering a hosted service built on Alpage needs a commercial license. Each
+        released version converts to Apache-2.0 four years after it is published.
+      </p>
+      <p>
+        <a href={`${base}/docs/licensing/`}>Read the plain-language version</a> or contact
+        <a href="mailto:licensing@subnet.ch">licensing@subnet.ch</a>.
+      </p>
+    </div>
+  </section>
+
+  <style>
+    .band {
+      margin-top: 5rem;
+    }
+
+    .hero {
+      border-bottom: 1px solid var(--border);
+      background:
+        radial-gradient(ellipse 80% 60% at 15% -10%, var(--accent-soft), transparent 70%),
+        radial-gradient(ellipse 60% 50% at 90% 0%, var(--pasture-soft), transparent 70%);
+      padding: 5.5rem 0 4.5rem;
+    }
+
+    /* Uses the shared .wrap container so the hero lines up with the sections
+       below instead of hugging a narrow left column. */
+    .hero-inner {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      column-gap: 3.5rem;
+      align-items: start;
+    }
+
+    .hero-copy {
+      grid-column: 1;
+    }
+
+    .hero-side {
+      grid-column: 2;
+      align-self: center;
+    }
+
+    @media (max-width: 900px) {
+      .hero-inner {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-copy,
+      .hero-side {
+        grid-column: 1;
+      }
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--text-faint);
+      margin: 0 0 1.1rem;
+    }
+
+    h1 {
+      font-size: clamp(2.3rem, 6vw, 3.6rem);
+      max-width: 20ch;
+      margin-bottom: 1.35rem;
+    }
+
+    .lede {
+      font-size: 1.13rem;
+      color: var(--text-muted);
+      max-width: 62ch;
+      margin: 0 0 2rem;
+    }
+
+    .cta {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.75rem;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 0.6rem 1.35rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-raised);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.94rem;
+      font-weight: 500;
+      transition:
+        border-color 0.15s ease,
+        transform 0.1s ease;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+      color: #fff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .btn.primary,
+      .btn.primary:hover {
+        color: #0f1419;
+      }
+    }
+
+    .provenance {
+      font-size: 0.9rem;
+      color: var(--text-faint);
+      margin: 0;
+    }
+
+    h2 {
+      font-size: clamp(1.5rem, 3vw, 1.9rem);
+      margin-bottom: 0.9rem;
+    }
+
+    .section-lede {
+      color: var(--text-muted);
+      max-width: var(--measure);
+      margin: 0 0 1.75rem;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .flow-step h3 {
+      font-size: 1rem;
+      margin: 0.55rem 0 0.4rem;
+    }
+
+    .flow-step p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .flow-num {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .flow-arrow {
+      color: var(--border-strong);
+      font-size: 1.2rem;
+      padding-top: 0.1rem;
+    }
+
+    @media (max-width: 860px) {
+      .flow {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+      }
+
+      .flow-arrow {
+        display: none;
+      }
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 2.5rem;
+    }
+
+    /* Four pillars: 2x2 rather than auto-fit, which orphans the 4th on a row. */
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 640px) {
+      .pillars {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .engine-points {
+      display: flex;
+      flex-direction: column;
+      gap: 1.35rem;
+    }
+
+    .engine-point h3 {
+      font-size: 1rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .engine-point p {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .notice {
+      display: flex;
+      gap: 0.85rem;
+      align-items: flex-start;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--warn);
+      border-radius: var(--radius);
+      background: var(--bg-raised);
+      padding: 1rem 1.25rem;
+      margin-top: 2rem;
+    }
+
+    .notice p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .notice strong {
+      color: var(--text);
+    }
+
+    .pillar {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.35rem 1.4rem;
+    }
+
+    .pillar h3 {
+      font-size: 1.02rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .pillar p {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .commands {
+      margin: 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .command {
+      display: grid;
+      grid-template-columns: 15rem 1fr;
+      gap: 1.5rem;
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--border);
+      align-items: baseline;
+    }
+
+    .command dt {
+      margin: 0;
+    }
+
+    .command dd {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.93rem;
+    }
+
+    @media (max-width: 700px) {
+      .command {
+        grid-template-columns: 1fr;
+        gap: 0.4rem;
+      }
+    }
+
+    .kinds {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .kind {
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--pasture);
+      border-radius: var(--radius);
+      padding: 1.15rem 1.3rem;
+      background: var(--bg-raised);
+    }
+
+    .kind-name {
+      font-weight: 600;
+      background: var(--pasture-soft) !important;
+      border-color: transparent !important;
+      color: var(--pasture);
+    }
+
+    .kind-payload {
+      display: block;
+      margin: 0.6rem 0 0.7rem;
+      font-size: 0.78rem;
+      color: var(--text-faint);
+      white-space: normal !important;
+      background: none !important;
+      border: 0 !important;
+      padding: 0 !important;
+    }
+
+    .kind p {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .aside {
+      margin: 1.5rem 0 0;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .install-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 2rem;
+      align-items: start;
+    }
+
+    .install-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .install-note p {
+      margin: 0 0 0.9rem;
+      font-size: 0.93rem;
+      color: var(--text-muted);
+    }
+
+    .license-panel {
+      background: var(--bg-sunken);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem 2.15rem;
+    }
+
+    .license-panel p {
+      color: var(--text-muted);
+      max-width: var(--measure);
+      margin: 0 0 1rem;
+    }
+
+    .license-panel p:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</Base>

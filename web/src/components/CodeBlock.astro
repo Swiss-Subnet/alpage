@@ -1,0 +1,24 @@
+---
+// Highlights at build time with Astro's bundled Shiki (no extra dependency),
+// then hands the markup to the Svelte island that owns the copy button.
+import { codeToHtml } from "shiki";
+import CopyBlock from "./CopyBlock.svelte";
+
+interface Props {
+  code: string;
+  lang: string;
+  label?: string;
+}
+
+const { code, lang, label = "" } = Astro.props;
+
+const html = await codeToHtml(code, {
+  lang,
+  themes: { light: "github-light", dark: "github-dark" },
+  defaultColor: false,
+});
+---
+
+<CopyBlock code={code} label={label} client:visible>
+  <Fragment set:html={html} />
+</CopyBlock>
