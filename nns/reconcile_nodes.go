@@ -34,6 +34,9 @@ type NodeOwnershipRow struct {
 	Owner          string // on-chain owning operator id, if any
 	Decommissioned bool   // declared decommissioned
 	Status         NodeOwnershipStatus
+	// StillRegistered records that the node's own registry record contradicts a
+	// decommissioned declaration, which operator lists alone cannot show.
+	StillRegistered bool
 }
 
 // NodeOwnershipReconcile is the diff of declared node->operator links against
@@ -103,6 +106,30 @@ func ReconcileOperatorNodes(r *Resources, byOperator map[string][]string) NodeOw
 	return nr
 }
 
+// ApplyNodeStatus settles decommissioned rows against the nodes' own registry
+// records. Absence from every declared operator's node list is not proof of
+// deregistration: a node moved to an operator we do not declare looks the same.
+// The record is the direct evidence, so a decommissioned node the registry
+// still registers becomes a mismatch. A node with no record read keeps the
+// verdict it already had.
+func (nr *NodeOwnershipReconcile) ApplyNodeStatus(status map[string]NodeStatus) {
+	for i := range nr.Nodes {
+		row := &nr.Nodes[i]
+		if row.Status != NodeOwnershipDecommissioned {
+			continue
+		}
+		st, ok := status[row.NodeID]
+		if !ok || !st.Registered {
+			continue
+		}
+		row.StillRegistered = true
+		row.Status = NodeOwnershipMismatch
+		if row.Owner == "" {
+			row.Owner = st.OperatorID
+		}
+	}
+}
+
 func (nr NodeOwnershipReconcile) HasDrift() bool {
 	for _, row := range nr.Nodes {
 		if row.Status != NodeOwnershipOK && row.Status != NodeOwnershipDecommissioned {
@@ -127,6 +154,10 @@ func (nr NodeOwnershipReconcile) Render(b *strings.Builder) {
 		detail := ""
 		switch row.Status {
 		case NodeOwnershipMismatch:
+			if row.StillRegistered {
+				detail = fmt.Sprintf("  (declared decommissioned but still registered, operator %s)", rowOwnerOrUnknown(row))
+				break
+			}
 			if row.Owner != "" && row.Decommissioned {
 				detail = fmt.Sprintf("  (declared decommissioned but still owned by %s)", row.Owner)
 				break
@@ -151,6 +182,16 @@ func (s NodeOwnershipStatus) color() string {
 	default:
 		return ansiRed
 	}
+}
+
+// rowOwnerOrUnknown names the operator the registry records. For a
+// still-registered decommissioned node that is often one resources.hcl does not
+// declare, which is the case operator lists alone cannot surface.
+func rowOwnerOrUnknown(row NodeOwnershipRow) string {
+	if row.Owner == "" {
+		return "unknown"
+	}
+	return row.Owner
 }
 
 func nodeRowName(row NodeOwnershipRow) string {

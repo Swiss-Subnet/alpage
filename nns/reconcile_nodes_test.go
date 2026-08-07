@@ -106,6 +106,66 @@ func TestReconcileOperatorNodesDecommissionedButStillOwned(t *testing.T) {
 	}
 }
 
+// Absence from every declared operator's node list is not proof of
+// deregistration: a node moved to an operator we do not declare looks identical.
+// The node record settles it, so a decommissioned node the registry still
+// registers is drift even when no declared operator owns it.
+func TestReconcileOperatorNodesDecommissionedButStillRegistered(t *testing.T) {
+	r := &Resources{
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes:     []NodeRes{{Name: "n_old", ID: "n-old", Operator: "op-a", Decommissioned: true}},
+		labels:    map[string]string{},
+	}
+	// No declared operator owns it, but the registry still has a live record.
+	nr := ReconcileOperatorNodes(r, map[string][]string{"op-a": {}})
+	nr.ApplyNodeStatus(map[string]NodeStatus{"n-old": {Registered: true, OperatorID: "undeclared-op"}})
+
+	got := nodeRowFor(nr, "n-old")
+	if got == nil || got.Status != NodeOwnershipMismatch {
+		t.Fatalf("n-old: got %+v, want mismatch", got)
+	}
+	if !nr.HasDrift() {
+		t.Error("a decommissioned node still in the registry is drift")
+	}
+}
+
+// The confirming case: the record is gone, so decommissioned holds.
+func TestReconcileOperatorNodesDecommissionedConfirmed(t *testing.T) {
+	r := &Resources{
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes:     []NodeRes{{Name: "n_old", ID: "n-old", Operator: "op-a", Decommissioned: true}},
+		labels:    map[string]string{},
+	}
+	nr := ReconcileOperatorNodes(r, map[string][]string{"op-a": {}})
+	nr.ApplyNodeStatus(map[string]NodeStatus{"n-old": {Registered: false}})
+
+	if got := nodeRowFor(nr, "n-old"); got == nil || got.Status != NodeOwnershipDecommissioned {
+		t.Errorf("n-old: got %+v, want decommissioned", got)
+	}
+	if nr.HasDrift() {
+		t.Error("a confirmed decommissioned node is not drift")
+	}
+}
+
+// Without a record the verdict stands as before: absence from declared
+// operators is the only evidence available, and it is not worth failing on.
+func TestReconcileOperatorNodesDecommissionedUnchecked(t *testing.T) {
+	r := &Resources{
+		Operators: []NodeOperator{{Name: "op_a", ID: "op-a", Label: ""}},
+		Nodes:     []NodeRes{{Name: "n_old", ID: "n-old", Operator: "op-a", Decommissioned: true}},
+		labels:    map[string]string{},
+	}
+	nr := ReconcileOperatorNodes(r, map[string][]string{"op-a": {}})
+	nr.ApplyNodeStatus(map[string]NodeStatus{})
+
+	if got := nodeRowFor(nr, "n-old"); got == nil || got.Status != NodeOwnershipDecommissioned {
+		t.Errorf("n-old: got %+v, want decommissioned", got)
+	}
+	if nr.HasDrift() {
+		t.Error("an unread record is not drift")
+	}
+}
+
 // A node that declares no operator is not diffed against ownership at all.
 func TestReconcileOperatorNodesSkipsUndeclaredOperator(t *testing.T) {
 	r := &Resources{

@@ -510,6 +510,15 @@ func reconcile(argv []string) error {
 		rr.Render(&b)
 		drift = drift || rr.HasDrift()
 	}
+	// Fetched once and shared: the ownership check needs decommissioned nodes'
+	// records to confirm deregistration, the sev check needs the live ones'.
+	var nodeStatus map[string]nns.NodeStatus
+	if len(cfg.Resources.Nodes) > 0 {
+		nodeStatus, err = nodeStatusAll(cfg.Resources)
+		if err != nil {
+			return err
+		}
+	}
 	if len(cfg.Resources.Providers) > 0 {
 		byProvider, err := providerOperators(cfg.Resources, effHost, fetchRootKey)
 		if err != nil {
@@ -524,15 +533,12 @@ func reconcile(argv []string) error {
 			return err
 		}
 		nr := nns.ReconcileOperatorNodes(cfg.Resources, byOperator)
+		nr.ApplyNodeStatus(nodeStatus)
 		nr.Render(&b)
 		drift = drift || nr.HasDrift()
 	}
 	if len(cfg.Resources.Nodes) > 0 {
-		status, err := nodeStatusAll(cfg.Resources)
-		if err != nil {
-			return err
-		}
-		sr := nns.ReconcileNodeSev(cfg.Resources, status)
+		sr := nns.ReconcileNodeSev(cfg.Resources, nodeStatus)
 		if err := verifyChips(&sr, *statePath, *refreshChips); err != nil {
 			return err
 		}
@@ -644,16 +650,13 @@ func verifyChips(sr *nns.NodeSevReconcile, statePath string, refresh bool) error
 	return nil
 }
 
-// nodeStatusAll fetches the registry record of every node that is not declared
-// decommissioned. The sev check needs a record per node, where the membership
-// check only needs the non-members; reads run concurrently because there may be
-// many.
+// nodeStatusAll fetches every declared node's registry record, decommissioned
+// ones included: their record is the direct evidence that a node really was
+// deregistered. Reads run concurrently because there may be many.
 func nodeStatusAll(r *nns.Resources) (map[string]nns.NodeStatus, error) {
-	var pending []string
+	pending := make([]string, 0, len(r.Nodes))
 	for _, n := range r.Nodes {
-		if !n.Decommissioned {
-			pending = append(pending, n.ID)
-		}
+		pending = append(pending, n.ID)
 	}
 	return fetchNodeStatus(pending)
 }

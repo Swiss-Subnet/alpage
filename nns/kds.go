@@ -31,7 +31,7 @@ var (
 //
 // Verified means AMD returned a VCEK certificate whose hwID extension is this
 // chip: the silicon is genuine and AMD stands behind it. It says nothing about
-// whether the node is currently running attested -- the certificate describes a
+// whether the node is currently running attested: the certificate describes a
 // chip, not a running VM.
 //
 // Inconclusive separates "AMD would not answer" (rate limit, network) from "AMD

@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 
 ### Changed
 
+- A node declared `decommissioned` is now confirmed against its own registry record rather than inferred from operator node lists. Absence from every declared operator is not proof of deregistration: a node moved to an operator `resources.hcl` does not declare looked identical and passed silently. A decommissioned node the registry still registers is now reported as drift.
 - `reconcile` reports drift for a node whose registry record carries a `chip_id` that `resources.hcl` does not declare. An unchanged config that passed before can now exit nonzero, so a fleet with SEV nodes needs its chips declared once; `reconcile` prints each on-chain value to paste in.
 
 ### Fixed
