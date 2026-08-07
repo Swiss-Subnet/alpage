@@ -123,6 +123,7 @@ var SchemaFieldDocs = map[string]string{
 	"NodeRes.operator":        "Id of its node operator (node_operator.<name>.id).",
 	"NodeRes.decommissioned":  "Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry.",
 	"NodeRes.guestos_version": "GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row \"via dashboard\" since that data may lag. Reconcile also checks the declared version against the NNS elected set and marks it \"NOT ELECTED\" if absent; when that source is unreadable the check is skipped rather than failing. Omitted means unchecked.",
+	"NodeRes.chip_id":         "The node's AMD SEV-SNP CHIP_ID as hex, the form AMD's KDS takes as its hwID parameter (base64 is also accepted; comparison is on the decoded bytes). 64 opaque bytes identifying the physical CPU, recorded by the registry canister only for a node onboarded with SEV. Pins hardware identity, not live TEE state. Reconcile also asks AMD KDS to vouch for the chip, caching the verdict in state.json. Omitted asserts the node carries none, so gaining, losing, or changing one is drift; an unread record reports \"unknown\".",
 
 	"Provider.host":           "Governance host URL. Defaults per command; overridden by --host.",
 	"Provider.neuron":         "Proposer neuron id.",
@@ -183,6 +184,7 @@ var SchemaFieldSince = map[string]string{
 	"NodeRes.operator":        "v0.1.0",
 	"NodeRes.decommissioned":  "v0.1.1",
 	"NodeRes.guestos_version": "v0.2.0",
+	"NodeRes.chip_id":         "v0.4.0",
 
 	"Provider.host":           "v0.1.0",
 	"Provider.neuron":         "v0.1.0",

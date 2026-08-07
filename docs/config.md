@@ -72,6 +72,7 @@ This page documents the schema as of the latest release. The Since column gives 
 | `operator` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Id of its node operator (`node_operator.<name>.id`). |
 | `decommissioned` | attr | no | <span class="since" title="Introduced in v0.1.1">v0.1.1</span> | Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. |
 | `guestos_version` | attr | no | <span class="since" title="Introduced in v0.2.0">v0.2.0</span> | GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row "via dashboard" since that data may lag. Reconcile also checks the declared version against the NNS elected set and marks it "NOT ELECTED" if absent; when that source is unreadable the check is skipped rather than failing. Omitted means unchecked. |
+| `chip_id` | attr | no | <span class="since" title="Introduced in v0.4.0">v0.4.0</span> | The node's AMD SEV-SNP CHIP_ID as hex, the form AMD's KDS takes as its hwID parameter (base64 is also accepted; comparison is on the decoded bytes). 64 opaque bytes identifying the physical CPU, recorded by the registry canister only for a node onboarded with SEV. Pins hardware identity, not live TEE state. Reconcile also asks AMD KDS to vouch for the chip, caching the verdict in state.json. Omitted asserts the node carries none, so gaining, losing, or changing one is drift; an unread record reports "unknown". |
 
 ## `proposals.hcl`
 
@@ -128,6 +129,7 @@ This page documents the schema as of the latest release. The Since column gives 
 
 Each release's schema, as generated at that tag:
 
+- [v0.4.0](https://github.com/Swiss-Subnet/alpage/blob/v0.4.0/docs/config.md)
 - [v0.3.0](https://github.com/Swiss-Subnet/alpage/blob/v0.3.0/docs/config.md)
 - [v0.2.0](https://github.com/Swiss-Subnet/alpage/blob/v0.2.0/docs/config.md)
 - [v0.1.1](https://github.com/Swiss-Subnet/alpage/blob/v0.1.1/docs/config.md)

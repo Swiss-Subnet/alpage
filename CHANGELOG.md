@@ -4,7 +4,18 @@ The release workflow extracts the section matching the tag and publishes it as t
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 1.0, a minor bump may change behaviour.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-07
+
+### Added
+
+- `node` resources accept `chip_id`, the node's AMD SEV-SNP CHIP_ID as the registry records it. Declared as hex, the form AMD's KDS takes as its hwID parameter; the base64 the registry explorer serves is also accepted, since comparison is on the decoded bytes. Omitting it asserts the node carries none, so a node that gains, loses, or changes its chip surfaces as drift; a node whose record cannot be read is reported `unknown` rather than counted as drift.
+- `reconcile` asks AMD's Key Distribution Service to vouch for each on-chain chip, confirming the VCEK certificate AMD signs carries that chip id, and reports the silicon stepping it returns. A chip AMD will not vouch for is drift on its own: the config and the registry can agree on a chip that is not genuine. A rate-limited or unreachable lookup is reported as inconclusive rather than counted against the chip. This attests hardware identity, not that a node is currently running attested.
+- Verified chips are recorded in `state.json` under `chips`. Silicon does not stop being genuine, so a verdict is kept permanently rather than expiring: only chips never seen before cost a lookup, which keeps repeat runs offline and off KDS's rate limit. Negative and inconclusive verdicts are never cached.
+- `reconcile --refresh-chips` re-asks AMD about every chip, ignoring cached verdicts, so a verdict recorded wrongly can be corrected without hand-editing `state.json`. A refusal drops the cached entry; an inconclusive answer leaves it untouched.
+
+### Changed
+
+- `reconcile` reports drift for a node whose registry record carries a `chip_id` that `resources.hcl` does not declare. An unchanged config that passed before can now exit nonzero, so a fleet with SEV nodes needs its chips declared once; `reconcile` prints each on-chain value to paste in.
 
 ### Fixed
 

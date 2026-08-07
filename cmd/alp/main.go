@@ -22,6 +22,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -466,6 +467,8 @@ func reconcile(argv []string) error {
 	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
 	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
 	host := fs.String("host", "", "IC host to query (overrides provider block)")
+	statePath := fs.String("state", nns.DefaultStatePath, "path to the consolidated state file")
+	refreshChips := fs.Bool("refresh-chips", false, "re-verify every SEV chip against AMD, ignoring cached verdicts")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -476,8 +479,8 @@ func reconcile(argv []string) error {
 	nns.Color = nns.DetectColor()
 	effHost := resolveHost(cfg.Provider, *host)
 	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
-	if len(cfg.Resources.Subnets) == 0 && len(cfg.Resources.Providers) == 0 && !anyDeclaredVersion(cfg.Resources) {
-		fmt.Println("no subnet or node_provider resources declared in resources.hcl")
+	if len(cfg.Resources.Subnets) == 0 && len(cfg.Resources.Providers) == 0 && len(cfg.Resources.Nodes) == 0 && !anyDeclaredVersion(cfg.Resources) {
+		fmt.Println("no subnet, node, or node_provider resources declared in resources.hcl")
 		return nil
 	}
 	var b strings.Builder
@@ -523,6 +526,18 @@ func reconcile(argv []string) error {
 		nr := nns.ReconcileOperatorNodes(cfg.Resources, byOperator)
 		nr.Render(&b)
 		drift = drift || nr.HasDrift()
+	}
+	if len(cfg.Resources.Nodes) > 0 {
+		status, err := nodeStatusAll(cfg.Resources)
+		if err != nil {
+			return err
+		}
+		sr := nns.ReconcileNodeSev(cfg.Resources, status)
+		if err := verifyChips(&sr, *statePath, *refreshChips); err != nil {
+			return err
+		}
+		sr.Render(&b)
+		drift = drift || sr.HasDrift()
 	}
 	vr := nns.ReconcileNodeVersionsElected(cfg.Resources, nodeVersions(cfg.Resources), electedVersions(cfg.Resources))
 	vr.Render(&b)
@@ -585,17 +600,95 @@ func nodeStatusForSubnet(r *nns.Resources, subnetID string, live []string) (map[
 			pending = append(pending, n.ID)
 		}
 	}
-	if len(pending) == 0 {
+	return fetchNodeStatus(pending)
+}
+
+// verifyChips folds AMD's verdict for each on-chain chip into the reconcile.
+// Verdicts are cached in state: a chip AMD vouches for stays genuine, so only
+// chips never seen before cost a KDS lookup. Progress is on stderr.
+//
+// A verdict that cannot be recorded is not fatal: reconcile is a read-only
+// report, so a failed state write degrades to re-verifying next run.
+func verifyChips(sr *nns.NodeSevReconcile, statePath string, refresh bool) error {
+	var chips []string
+	for _, row := range sr.Nodes {
+		if row.Live != "" {
+			chips = append(chips, row.Live)
+		}
+	}
+	if len(chips) == 0 {
+		return nil
+	}
+	st, err := nns.LoadState(statePath)
+	if err != nil {
+		return err
+	}
+	before := maps.Clone(st.Chips)
+	lookup := func(chip string) nns.ChipVerification {
+		fmt.Fprintf(os.Stderr, "verifying chip against AMD KDS (%s...)...\n", chip[:12])
+		return nns.FetchChipVerification(nns.DefaultKDSBase, chip)
+	}
+	var byChip map[string]nns.ChipVerification
+	if refresh {
+		byChip = nns.RefreshChips(st, chips, lookup)
+	} else {
+		byChip = nns.VerifyChipsCached(st, chips, lookup)
+	}
+	sr.ApplyChipVerification(byChip)
+	if maps.Equal(before, st.Chips) {
+		return nil
+	}
+	if err := nns.SaveState(statePath, st); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not record chip verification (%v); will re-verify next run\n", err)
+	}
+	return nil
+}
+
+// nodeStatusAll fetches the registry record of every node that is not declared
+// decommissioned. The sev check needs a record per node, where the membership
+// check only needs the non-members; reads run concurrently because there may be
+// many.
+func nodeStatusAll(r *nns.Resources) (map[string]nns.NodeStatus, error) {
+	var pending []string
+	for _, n := range r.Nodes {
+		if !n.Decommissioned {
+			pending = append(pending, n.ID)
+		}
+	}
+	return fetchNodeStatus(pending)
+}
+
+func fetchNodeStatus(ids []string) (map[string]nns.NodeStatus, error) {
+	if len(ids) == 0 {
 		return nil, nil
 	}
-	status := make(map[string]nns.NodeStatus, len(pending))
-	for i, id := range pending {
-		fmt.Fprintf(os.Stderr, "checking node record %d/%d (%s)...\n", i+1, len(pending), id)
-		s, err := nns.FetchNodeStatus(nns.DefaultRegistryExplorer, id)
-		if err != nil {
-			return nil, err
-		}
-		status[id] = s
+	fmt.Fprintf(os.Stderr, "reading %d node record(s)...\n", len(ids))
+	status := make(map[string]nns.NodeStatus, len(ids))
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 16)
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			s, err := nns.FetchNodeStatus(nns.DefaultRegistryExplorer, id)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				return
+			}
+			status[id] = s
+		}(id)
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return status, nil
 }

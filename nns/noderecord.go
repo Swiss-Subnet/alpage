@@ -22,6 +22,10 @@ type nodeRecord struct {
 type nodeRecordValue struct {
 	NodeOperatorID string          `json:"node_operator_id"`
 	Http           *nodeRecordAddr `json:"http"`
+	// ChipID is the AMD SEV-SNP CHIP_ID (64 bytes, an identifier fused into the
+	// physical CPU), base64 as the explorer serves it. Recorded only for a node
+	// onboarded with SEV, so its presence is what marks the node SEV-capable.
+	ChipID string `json:"chip_id"`
 }
 
 type nodeRecordAddr struct {
@@ -43,7 +47,11 @@ func nodeRegistration(records []nodeRecord) (NodeStatus, bool) {
 	if latest == nil || latest.Value == nil {
 		return NodeStatus{}, false
 	}
-	st := NodeStatus{Registered: true, OperatorID: latest.Value.NodeOperatorID}
+	st := NodeStatus{
+		Registered: true,
+		OperatorID: latest.Value.NodeOperatorID,
+		ChipID:     latest.Value.ChipID,
+	}
 	if h := latest.Value.Http; h != nil {
 		st.HttpIP, st.HttpPort = h.IPAddr, h.Port
 	}
@@ -58,6 +66,9 @@ type NodeStatus struct {
 	// version it reports running. Empty when the record carries no endpoint.
 	HttpIP   string
 	HttpPort uint32
+	// ChipID is the record's chip_id, empty when the node carries none. See
+	// nodeRecordValue.ChipID for what it identifies.
+	ChipID string
 }
 
 // FetchNodeStatus reads a node's record history from the registry explorer HTTP

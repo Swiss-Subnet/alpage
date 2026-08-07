@@ -29,9 +29,9 @@ type Subnet struct {
 	Label string `hcl:"label,optional"`
 	// SevEnabled is reconciled against the subnet record's features.sev_enabled.
 	// Omitted means false: subnets are not SEV-enabled by default, so an
-	// undeclared subnet that is enabled on-chain is drift. SEV-SNP enablement is
-	// a subnet-level fact on-chain; the registry's per-node record carries only
-	// chip_id (hardware provenance), not runtime TEE state.
+	// undeclared subnet that is enabled on-chain is drift. This is the
+	// subnet-level flag; the per-node counterpart is NodeRes.SevEnabled, which
+	// reconciles against the node record's chip_id.
 	SevEnabled bool `hcl:"sev_enabled,optional"`
 	// Type is the subnet type: application (the default when omitted),
 	// verified_application, system, or cloud_engine. Omitted means application,
@@ -111,6 +111,10 @@ type NodeRes struct {
 	// the registry stores a version per subnet, not per node, so it is read from
 	// the node's own /api/v2/status impl_version. Omitted means unchecked.
 	GuestosVersion string `hcl:"guestos_version,optional"`
+	// ChipID pins the node's AMD SEV-SNP CHIP_ID, base64 as the registry serves
+	// it. Omitted asserts the node carries none, so gaining, losing, or
+	// changing one is drift.
+	ChipID string `hcl:"chip_id,optional"`
 }
 
 func (s Subnet) name() string        { return s.Name }

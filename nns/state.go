@@ -34,6 +34,10 @@ type Entry struct {
 // actually submit and what did it become".
 type State struct {
 	Proposals map[string]Entry `json:"proposals"`
+	// Chips caches AMD's verdict per SEV-SNP chip id (hex). A chip AMD vouches
+	// for stays genuine, so this is a permanent record rather than a TTL cache:
+	// it keeps reconcile offline and off KDS's rate limit.
+	Chips map[string]ChipEntry `json:"chips,omitempty"`
 }
 
 // DefaultStatePath is the consolidated state file, relative to the module root.
@@ -44,7 +48,7 @@ const DefaultStatePath = "state.json"
 func LoadState(path string) (*State, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return &State{Proposals: map[string]Entry{}}, nil
+		return &State{Proposals: make(map[string]Entry), Chips: make(map[string]ChipEntry)}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -54,7 +58,10 @@ func LoadState(path string) (*State, error) {
 		return nil, fmt.Errorf("parse state %s: %w", path, err)
 	}
 	if s.Proposals == nil {
-		s.Proposals = map[string]Entry{}
+		s.Proposals = make(map[string]Entry)
+	}
+	if s.Chips == nil {
+		s.Chips = make(map[string]ChipEntry)
 	}
 	return &s, nil
 }

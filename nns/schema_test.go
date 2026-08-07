@@ -33,6 +33,7 @@ func TestSchemaFieldSinceValues(t *testing.T) {
 		"GuestosVersionRes.id":     "v0.3.0",
 		"GuestosVersionRes.label":  "v0.3.0",
 		"membershipBody.subnet_id": "v0.3.0",
+		"NodeRes.chip_id":          "v0.4.0",
 	}
 	for key, w := range want {
 		if got := SchemaFieldSince[key]; got != w {
