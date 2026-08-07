@@ -21,6 +21,14 @@ type fetchOpts struct {
 	explorerBase       string
 	dashboardBase      string
 	allowUnverified    bool
+	subnets            []principal.Principal
+}
+
+// WithSubnets supplies the subnets to check node membership against. The
+// registry has no node->subnet index, so remove_nodes preflight can only look
+// where it is told; callers pass the subnets resources.hcl declares.
+func WithSubnets(ids ...principal.Principal) FetchOption {
+	return func(o *fetchOpts) { o.subnets = append(o.subnets, ids...) }
 }
 
 // AllowUnverifiedElection lets deploy_guestos preflight proceed when the

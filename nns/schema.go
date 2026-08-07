@@ -89,6 +89,24 @@ var SchemaBlocks = []SchemaBlock{
 		Type:  Node{},
 		Since: "v0.1.0",
 	},
+	{
+		Name: "remove_nodes", File: "proposals.hcl",
+		Doc:   "Nested in a proposal of kind \"remove_nodes\": deregisters nodes, freeing their operators' allowance. Holds one node block per node. The registry rejects a node that is still a subnet member, so remove it from its subnet first; preflight checks this before the proposal is cut.",
+		Type:  removeNodesBody{},
+		Since: "v0.5.0",
+	},
+	{
+		Name: "remove_node_operators", File: "proposals.hcl",
+		Doc:   "Nested in a proposal of kind \"remove_node_operators\": deletes node operator records. The registry silently skips an operator that still owns nodes, so deregister its nodes first; preflight checks this.",
+		Type:  removeNodeOperatorsBody{},
+		Since: "v0.5.0",
+	},
+	{
+		Name: "remove_node_provider", File: "proposals.hcl",
+		Doc:   "Nested in a proposal of kind \"remove_node_provider\": removes a node provider. Unlike the other kinds this is a native governance action rather than an ExecuteNnsFunction. Governance rejects a provider it does not know, and removing one that still has operators orphans them; preflight checks both.",
+		Type:  removeNodeProviderBody{},
+		Since: "v0.5.0",
+	},
 }
 
 // SchemaFieldDocs maps "<struct>.<hclname>" to a field description. schemadoc
@@ -143,13 +161,17 @@ var SchemaFieldDocs = map[string]string{
 
 	"Node.id":    "Node id (node.<name>.id).",
 	"Node.label": "Optional human-readable name.",
+
+	"removeNodesBody.node":                    "A node to deregister. Repeat the block for each one.",
+	"removeNodeOperatorsBody.operators":       "Ids of the node operators whose records to delete (node_operator.<name>.id).",
+	"removeNodeProviderBody.node_provider_id": "Principal of the node provider to remove (node_provider.<name>.id).",
 }
 
 // SchemaUnreleased is the version Since values carry before that version is
 // tagged; the docs list it as unreleased rather than linking a tag that does
 // not exist yet. Empty once that version ships, so every entry links its tag.
 // Set it to the next version when a change first lands after a release.
-const SchemaUnreleased = ""
+const SchemaUnreleased = "v0.5.0"
 
 // SchemaFieldSince maps "<struct>.<hclname>" to the release tag that introduced
 // the field, so the generated docs say which version a reader's binary needs.
@@ -205,4 +227,8 @@ var SchemaFieldSince = map[string]string{
 
 	"Node.id":    "v0.1.0",
 	"Node.label": "v0.1.0",
+
+	"removeNodesBody.node":                    "v0.5.0",
+	"removeNodeOperatorsBody.operators":       "v0.5.0",
+	"removeNodeProviderBody.node_provider_id": "v0.5.0",
 }

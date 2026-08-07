@@ -37,6 +37,10 @@ nix run .#alp -- version    # expect X.Y.Z-dirty before committing, X.Y.Z after
 
 The `-dirty` suffix comes from an uncommitted tree and disappears once the prep commit lands. That is deliberate, so a working-tree build is never mistaken for the release it is based on.
 
+## After a tag is pushed
+
+A released section is frozen: its notes are already published and its terms already bind that version. Work that lands afterwards goes under a fresh `## [Unreleased]` heading above it.
+
 ## Choosing the number
 
 Before 1.0, a minor bump may change behaviour; that is stated at the top of the CHANGELOG. In practice:

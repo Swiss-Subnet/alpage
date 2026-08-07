@@ -4,6 +4,13 @@ The release workflow extracts the section matching the tag and publishes it as t
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 1.0, a minor bump may change behaviour.
 
+## [Unreleased]
+
+### Added
+
+- Three removal proposal kinds: `remove_nodes` (deregister nodes), `remove_node_operators` (delete operator records), and `remove_node_provider`. Each preflights the precondition its canister enforces, which otherwise fails late: a node still in a subnet makes `remove_nodes` panic *after* the NNS adopts the proposal, and an operator that still owns nodes is silently dropped from the payload, so the proposal reports success while changing nothing.
+- `remove_node_provider` is the first native governance action alpage submits rather than an `ExecuteNnsFunction`. `Action` gained `ProposalAction()` so a kind builds its own governance action; the existing kinds return a shared `ExecuteNnsFunction` helper and are otherwise unchanged.
+
 ## [0.4.0] - 2026-08-07
 
 ### Added

@@ -21,9 +21,14 @@ type Action interface {
 	Kind() string
 	NnsFunction() governancepb.NnsFunction
 	Metadata() Meta
-	// PayloadBlob is the exact candid-encoded blob nested inside the
-	// ExecuteNnsFunction action. Its SHA-256 is what state pins.
+	// PayloadBlob is the kind's candid-encoded payload. Its SHA-256 is what
+	// state pins. For an ExecuteNnsFunction kind it is the blob nested inside
+	// the action; for a native one it encodes the action's own argument.
 	PayloadBlob() ([]byte, error)
+	// ProposalAction is the governance action to submit. Most kinds go through
+	// ExecuteNnsFunction and can return execNnsAction(a); a native action (e.g.
+	// AddOrRemoveNodeProvider) builds its own variant instead.
+	ProposalAction() (*governance.ProposalActionRequest, error)
 	RenderPayload(b *strings.Builder, blob []byte)
 	// Preflight reconciles the action against live network state, kind-
 	// specifically. apply and plan call it without knowing the kind.
@@ -45,7 +50,7 @@ func (m Meta) Metadata() Meta { return m }
 // local (PocketIC) and mainnet submit paths so the dry-run verifies exactly what
 // the real submission sends.
 func makeProposalRequest(neuron governance.NeuronId, a Action) (governance.ManageNeuronRequest, error) {
-	blob, err := a.PayloadBlob()
+	action, err := a.ProposalAction()
 	if err != nil {
 		return governance.ManageNeuronRequest{}, err
 	}
@@ -58,13 +63,24 @@ func makeProposalRequest(neuron governance.NeuronId, a Action) (governance.Manag
 				Title:   &title,
 				Summary: m.Summary,
 				Url:     m.URL,
-				Action: &governance.ProposalActionRequest{
-					ExecuteNnsFunction: &governance.ExecuteNnsFunction{
-						NnsFunction: int32(a.NnsFunction()),
-						Payload:     blob,
-					},
-				},
+				Action:  action,
 			},
+		},
+	}, nil
+}
+
+// execNnsAction wraps a kind's payload in ExecuteNnsFunction, the generic
+// mechanism most NNS proposals use: a function number plus an opaque blob the
+// target canister decodes.
+func execNnsAction(a Action) (*governance.ProposalActionRequest, error) {
+	blob, err := a.PayloadBlob()
+	if err != nil {
+		return nil, err
+	}
+	return &governance.ProposalActionRequest{
+		ExecuteNnsFunction: &governance.ExecuteNnsFunction{
+			NnsFunction: int32(a.NnsFunction()),
+			Payload:     blob,
 		},
 	}, nil
 }
@@ -99,6 +115,10 @@ func (r MembershipProposal) PayloadBlob() ([]byte, error) {
 		return nil, fmt.Errorf("encode ChangeSubnetMembershipPayload: %w", err)
 	}
 	return blob, nil
+}
+
+func (r MembershipProposal) ProposalAction() (*governance.ProposalActionRequest, error) {
+	return execNnsAction(r)
 }
 
 // Preflight diffs the change against the subnet's current on-chain membership.
@@ -151,6 +171,10 @@ func (d DeployGuestosAction) PayloadBlob() ([]byte, error) {
 		return nil, fmt.Errorf("encode DeployGuestosToAllSubnetNodesPayload: %w", err)
 	}
 	return blob, nil
+}
+
+func (d DeployGuestosAction) ProposalAction() (*governance.ProposalActionRequest, error) {
+	return execNnsAction(d)
 }
 
 // Preflight checks the target replica version against the subnet's current

@@ -4,7 +4,7 @@
 
 Alpage config is HCL. The blocks below are the complete schema; it is generated from the `hcl:"..."` struct tags in `nns/`, so it always matches what the tool parses.
 
-This page documents the schema as of the latest release. The Since column gives the release each block and field first appeared in, so a field newer than your binary is visible as such; see [Schema History](#schema-history) for the schema as of each release.
+This page documents the current development schema, ahead of the latest release. The Since column gives the release each block and field first appeared in, so a field newer than your binary is visible as such; see [Schema History](#schema-history) for the schema as of each release.
 
 ## `resources.hcl`
 
@@ -125,10 +125,35 @@ This page documents the schema as of the latest release. The Since column gives 
 | `id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Node id (`node.<name>.id`). |
 | `label` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Optional human-readable name. |
 
+### `remove_nodes { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "remove_nodes": deregisters nodes, freeing their operators' allowance. Holds one [node](#node-) block per node. The registry rejects a node that is still a subnet member, so remove it from its subnet first; preflight checks this before the proposal is cut.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `node` | block | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | A node to deregister. Repeat the block for each one. |
+
+### `remove_node_operators { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "remove_node_operators": deletes node operator records. The registry silently skips an operator that still owns nodes, so deregister its nodes first; preflight checks this.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `operators` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Ids of the node operators whose records to delete (`node_operator.<name>.id`). |
+
+### `remove_node_provider { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "remove_node_provider": removes a node provider. Unlike the other kinds this is a native governance action rather than an ExecuteNnsFunction. Governance rejects a provider it does not know, and removing one that still has operators orphans them; preflight checks both.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `node_provider_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the node provider to remove (`node_provider.<name>.id`). |
+
 ## Schema History
 
 Each release's schema, as generated at that tag:
 
+- **v0.5.0** (unreleased) - the schema above.
 - [v0.4.0](https://github.com/Swiss-Subnet/alpage/blob/v0.4.0/docs/config.md)
 - [v0.3.0](https://github.com/Swiss-Subnet/alpage/blob/v0.3.0/docs/config.md)
 - [v0.2.0](https://github.com/Swiss-Subnet/alpage/blob/v0.2.0/docs/config.md)

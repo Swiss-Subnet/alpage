@@ -25,6 +25,18 @@ type deployGuestosBody struct {
 	ReplicaVersionID string `hcl:"replica_version_id"`
 }
 
+type removeNodesBody struct {
+	Nodes []Node `hcl:"node,block"`
+}
+
+type removeNodeOperatorsBody struct {
+	Operators []string `hcl:"operators"`
+}
+
+type removeNodeProviderBody struct {
+	NodeProviderID string `hcl:"node_provider_id"`
+}
+
 // Spec is one `proposal "<name>" { ... }` block: common metadata plus a
 // kind-specific nested block. Single source of truth for the payload; dry-run,
 // submit, and state all derive from it.
@@ -163,6 +175,46 @@ func (s *Spec) Action() (Action, error) {
 			return nil, fmt.Errorf("proposal %q: replica_version_id is required", s.Name)
 		}
 		return DeployGuestosAction{Meta: s.Meta(), SubnetID: subnet, ReplicaVersionID: body.ReplicaVersionID}, nil
+	case "remove_nodes":
+		var body removeNodesBody
+		if err := s.decodeRest(&body); err != nil {
+			return nil, err
+		}
+		if len(body.Nodes) == 0 {
+			return nil, fmt.Errorf("proposal %q: at least one node block is required", s.Name)
+		}
+		ids, err := decodeNodes(body.Nodes)
+		if err != nil {
+			return nil, fmt.Errorf("proposal %q: %w", s.Name, err)
+		}
+		return RemoveNodesAction{Meta: s.Meta(), NodeIDs: ids}, nil
+	case "remove_node_operators":
+		var body removeNodeOperatorsBody
+		if err := s.decodeRest(&body); err != nil {
+			return nil, err
+		}
+		if len(body.Operators) == 0 {
+			return nil, fmt.Errorf("proposal %q: at least one operator is required", s.Name)
+		}
+		ids := make([]principal.Principal, len(body.Operators))
+		for i, op := range body.Operators {
+			p, err := principal.Decode(op)
+			if err != nil {
+				return nil, fmt.Errorf("proposal %q: operator id %q: %w", s.Name, op, err)
+			}
+			ids[i] = p
+		}
+		return RemoveNodeOperatorsAction{Meta: s.Meta(), OperatorIDs: ids}, nil
+	case "remove_node_provider":
+		var body removeNodeProviderBody
+		if err := s.decodeRest(&body); err != nil {
+			return nil, err
+		}
+		p, err := principal.Decode(body.NodeProviderID)
+		if err != nil {
+			return nil, fmt.Errorf("proposal %q: node_provider_id %q: %w", s.Name, body.NodeProviderID, err)
+		}
+		return RemoveNodeProviderAction{Meta: s.Meta(), ProviderID: p}, nil
 	default:
 		return nil, fmt.Errorf("proposal %q: unsupported kind %q", s.Name, s.Kind)
 	}

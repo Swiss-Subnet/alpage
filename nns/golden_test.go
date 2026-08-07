@@ -11,6 +11,22 @@ import (
 
 var update = flag.Bool("update", false, "update golden files")
 
+// The provider the remove-node-provider fixture targets. Governance validates
+// AddOrRemoveNodeProvider against its own list, so the fixture only reaches
+// submission if the provider is seeded there.
+var goldenSubnetSeeds = []SubnetSeed{{
+	SubnetID:       subnetX,
+	NumNodes:       1,
+	ReplicaVersion: "0000000000000000000000000000000000000001",
+}}
+
+var goldenProviderSeeds = []ProviderSeed{{
+	ProviderID: "dchi6-uidam-bqgay-dambq-gayda-mbqga-ydamb-qgayd-ambqg-aydam-bqg",
+	OperatorID: "hsi7b-rl4wt-lum3m-ophfi-oxgx5-u2q7r-ak7ag-nyiik-c4gam-epo2r-3qe",
+	DcID:       "dc1",
+	DcRegion:   "eu/ch/zurich",
+}}
+
 // TestDryRunGolden brings up a local NNS, submits each proposal declared in the
 // repo config, and compares the rendered result against a committed golden file.
 // Run with -update to regenerate the goldens after an intentional change.
@@ -25,7 +41,18 @@ func TestDryRunGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("action: %v", err)
 			}
-			n := startNNS(t, principal.Principal{})
+			// remove_nodes needs a subnet list to exist at all, and the
+			// provider fixture additionally needs governance's own
+			// node-provider list seeded.
+			var providers []ProviderSeed
+			var seeds []SubnetSeed
+			switch spec.Kind {
+			case "remove_node_provider":
+				providers, seeds = goldenProviderSeeds, goldenSubnetSeeds
+			case "remove_nodes":
+				seeds = goldenSubnetSeeds
+			}
+			n, _, _ := startNNSSeededWithProviders(t, principal.Principal{}, seeds, providers, false)
 			pid, err := n.SubmitAs(n.Proposer, n.ProposerNeuron(), action)
 			if err != nil {
 				t.Fatalf("submit: %v", err)

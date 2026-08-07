@@ -56,7 +56,7 @@ func BringUpWithSubnetsAndProviders(c *pocketic.Client, inst int, controller, ho
 		wasm string
 		arg  []byte
 	}
-	govArg, err := minimalGovernanceInit(controller, hotkey)
+	govArg, err := minimalGovernanceInit(controller, hotkey, providers)
 	if err != nil {
 		return nil, fmt.Errorf("encode governance init: %w", err)
 	}
@@ -174,17 +174,24 @@ func proposerNeuron(controller, hotkey principal.Principal) governance.Neuron {
 // minimalGovernanceInit builds the smallest Governance init the canister will
 // accept, with economics set so the pre-seeded neuron actually has voting power
 // (a non-nil VotingPowerEconomics with a 6-month minimum dissolve delay to vote).
-func minimalGovernanceInit(controller, hotkey principal.Principal) ([]byte, error) {
+//
+// Node providers live in governance's heap, separate from the registry records
+// the same seeds produce; AddOrRemoveNodeProvider validates against this list.
+func minimalGovernanceInit(controller, hotkey principal.Principal, providers []ProviderSeed) ([]byte, error) {
 	votingPeriod := uint64(30)
 	minDD := sixMonthsSeconds
 	// Push voting-power decay far out so the neuron keeps full power in tests.
 	reduceAfter := uint64(100 * 365 * 24 * 3600)
+	nps, err := governanceNodeProviders(providers)
+	if err != nil {
+		return nil, err
+	}
 	g := governance.Governance{
 		WaitForQuietThresholdSeconds:        60,
 		ShortVotingPeriodSeconds:            30,
 		NeuronManagementVotingPeriodSeconds: &votingPeriod,
 		GenesisTimestampSeconds:             GenesisTimestampSeconds,
-		NodeProviders:                       []governance.NodeProvider{},
+		NodeProviders:                       nps,
 		ToClaimTransfers:                    []governance.NeuronStakeTransfer{},
 		Economics: &governance.NetworkEconomics{
 			NeuronMinimumStakeE8s: 100_000_000, // 1 ICP
@@ -204,4 +211,23 @@ func minimalGovernanceInit(controller, hotkey principal.Principal) ([]byte, erro
 		},
 	}
 	return candid.Marshal([]any{g})
+}
+
+// governanceNodeProviders dedupes the seeds by provider id: several operator
+// seeds commonly share one provider.
+func governanceNodeProviders(seeds []ProviderSeed) ([]governance.NodeProvider, error) {
+	out := []governance.NodeProvider{}
+	seen := map[string]bool{}
+	for _, s := range seeds {
+		if s.ProviderID == "" || seen[s.ProviderID] {
+			continue
+		}
+		seen[s.ProviderID] = true
+		id, err := principal.Decode(s.ProviderID)
+		if err != nil {
+			return nil, fmt.Errorf("provider seed %q: %w", s.ProviderID, err)
+		}
+		out = append(out, governance.NodeProvider{Id: &id})
+	}
+	return out, nil
 }
