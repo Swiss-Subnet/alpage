@@ -339,8 +339,10 @@ func list(argv []string) error {
 	return nil
 }
 
-// planCheck runs the action's preflight against live state before submit. A
-// no-op result is refused unless force; warnings print but do not block.
+// planCheck runs the action's preflight against live state before submit. The
+// report always prints, so a submit never proceeds without saying what it
+// checked. A no-op result is refused unless force; warnings print but do not
+// block.
 func planCheck(action nns.Action, host string, fetchRootKey, force bool) error {
 	// --force also covers sources preflight could not read at all, so an
 	// explorer outage does not block a deploy outright.
@@ -352,11 +354,11 @@ func planCheck(action nns.Action, host string, fetchRootKey, force bool) error {
 	if err != nil {
 		return fmt.Errorf("preflight: %w", err)
 	}
-	if pf.Report == "" {
-		return nil
-	}
 	fmt.Print("\n== Preflight vs on-chain state ==\n")
 	fmt.Print(pf.Report)
+	if pf.Level == nns.PreflightClean {
+		fmt.Println("preflight is clean; nothing flagged")
+	}
 	if pf.Level == nns.PreflightNoOp && !force {
 		return fmt.Errorf("proposal is a no-op against current on-chain state; refusing to submit without --force")
 	}
@@ -397,13 +399,14 @@ func plan(argv []string) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("plan %s (%s) vs %s\n", spec.Name, action.Kind(), effHost)
+	fmt.Print(pf.Report)
 	if pf.Level == nns.PreflightClean {
-		if pf.Report != "" {
-			fmt.Print(pf.Report)
-		}
+		// Always land on an explicit verdict: silence used to be the clean result,
+		// which reads the same as a proposal that was never parsed.
+		fmt.Println("plan is clean; nothing flagged")
 		return nil
 	}
-	fmt.Print(pf.Report)
 	return fmt.Errorf("plan flagged issues; review before applying")
 }
 

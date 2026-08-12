@@ -53,8 +53,19 @@ func TestPlanRemoveNodesClean(t *testing.T) {
 	if len(p.Issues) != 0 {
 		t.Errorf("expected no issues, got %+v", p.Issues)
 	}
-	if removalPreflight(p).Level != PreflightClean {
+	pf := removalPreflight(p)
+	if pf.Level != PreflightClean {
 		t.Error("unassigned registered nodes remove cleanly")
+	}
+	// An issue-free removal still has to name its targets, so a clean plan never
+	// prints nothing at all.
+	if pf.Report == "" {
+		t.Fatal("a clean removal must still report its targets")
+	}
+	for _, want := range []string{"n-1", "n-2", "remove_nodes"} {
+		if !strings.Contains(pf.Report, want) {
+			t.Errorf("clean report missing %q, got:\n%s", want, pf.Report)
+		}
 	}
 }
 

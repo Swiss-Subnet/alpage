@@ -99,11 +99,12 @@ type Preflight struct {
 	Level  PreflightLevel
 }
 
-// membershipPreflight grades a membership plan: no warnings is Clean (empty report),
-// all-no-op is NoOp, any real op alongside a warning is Warn.
+// membershipPreflight grades a membership plan: no warnings is Clean, all-no-op
+// is NoOp, any real op alongside a warning is Warn. Every level renders the full
+// op list, so a clean plan is never mistaken for a proposal that was not read.
 func membershipPreflight(p MembershipPlan) Preflight {
 	if !p.HasWarnings() {
-		return Preflight{}
+		return Preflight{p.Render(), PreflightClean}
 	}
 	level := PreflightWarn
 	if p.AllNoOp() {
@@ -160,7 +161,15 @@ func (p MembershipPlan) Render() string {
 	if warnings > 0 {
 		fmt.Fprintf(&b, "%d warning(s)\n", warnings)
 	} else {
-		b.WriteString("no warnings; plan matches current membership\n")
+		adds, removes := 0, 0
+		for _, op := range p.Ops {
+			if op.Kind == OpAdd {
+				adds++
+			} else {
+				removes++
+			}
+		}
+		fmt.Fprintf(&b, "no conflicts; %d add(s) and %d remove(s) would take effect\n", adds, removes)
 	}
 	return b.String()
 }

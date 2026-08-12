@@ -82,7 +82,8 @@ func TestPlanEmptyNotAllNoOp(t *testing.T) {
 }
 
 func TestMembershipPreflightClean(t *testing.T) {
-	// Add C (new), remove A (present): no warnings -> empty report, Clean.
+	// Add C (new), remove A (present): no warnings -> Clean, and the report still
+	// spells out both ops. A silent plan is indistinguishable from a crash.
 	plan := PlanMembership(MembershipProposal{
 		NodeIDsAdd:    []principal.Principal{nodeC},
 		NodeIDsRemove: []principal.Principal{nodeA},
@@ -91,8 +92,13 @@ func TestMembershipPreflightClean(t *testing.T) {
 	if pf.Level != PreflightClean {
 		t.Errorf("clean plan should be Clean, got %v", pf.Level)
 	}
-	if pf.Report != "" {
-		t.Errorf("clean plan should have an empty report, got %q", pf.Report)
+	if pf.Report == "" {
+		t.Fatal("a clean plan must still report the ops it would submit")
+	}
+	for _, want := range []string{nodeC.Encode(), nodeA.Encode(), "1 add(s) and 1 remove(s)"} {
+		if !strings.Contains(pf.Report, want) {
+			t.Errorf("clean report missing %q, got:\n%s", want, pf.Report)
+		}
 	}
 }
 

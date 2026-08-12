@@ -130,48 +130,40 @@ func (nr *NodeOwnershipReconcile) ApplyNodeStatus(status map[string]NodeStatus) 
 	}
 }
 
-func (nr NodeOwnershipReconcile) HasDrift() bool {
-	for _, row := range nr.Nodes {
-		if row.Status != NodeOwnershipOK && row.Status != NodeOwnershipDecommissioned {
-			return true
-		}
-	}
-	return false
-}
-
-func (nr NodeOwnershipReconcile) Render(b *strings.Builder) {
-	if len(nr.Nodes) == 0 {
-		return
-	}
-	b.WriteString("nodes\n")
-	nameW := 0
-	for _, row := range nr.Nodes {
-		if n := len(nodeRowName(row)); n > nameW {
-			nameW = n
-		}
-	}
+func (nr NodeOwnershipReconcile) Table() Table {
+	t := Table{Header: "nodes"}
 	for _, row := range nr.Nodes {
 		detail := ""
 		switch row.Status {
 		case NodeOwnershipMismatch:
-			if row.StillRegistered {
+			switch {
+			case row.StillRegistered:
 				detail = fmt.Sprintf("  (declared decommissioned but still registered, operator %s)", rowOwnerOrUnknown(row))
-				break
-			}
-			if row.Owner != "" && row.Decommissioned {
+			case row.Owner != "" && row.Decommissioned:
 				detail = fmt.Sprintf("  (declared decommissioned but still owned by %s)", row.Owner)
-				break
+			default:
+				detail = fmt.Sprintf("  (declared operator %s, on-chain %s)", row.Operator, row.Owner)
 			}
-			detail = fmt.Sprintf("  (declared operator %s, on-chain %s)", row.Operator, row.Owner)
 		case NodeOwnershipGone:
 			detail = fmt.Sprintf("  (declared operator %s owns it no longer)", row.Operator)
 		case NodeOwnershipUnmanaged:
 			detail = fmt.Sprintf("  (owned by declared operator %s, not in resources.hcl)", row.Owner)
 		}
-		status := colorize(fmt.Sprintf("%-17s", row.Status), row.Status.color())
-		fmt.Fprintf(b, "  %s  %-*s  %s%s\n", status, nameW, nodeRowName(row), row.NodeID, detail)
+		t.Rows = append(t.Rows, Row{
+			Status: string(row.Status),
+			Name:   row.Name,
+			ID:     row.NodeID,
+			Detail: detail,
+			OK:     row.Status == NodeOwnershipOK || row.Status == NodeOwnershipDecommissioned,
+			Color:  row.Status.color(),
+		})
 	}
+	return t
 }
+
+func (nr NodeOwnershipReconcile) HasDrift() bool { return nr.Table().HasDrift() }
+
+func (nr NodeOwnershipReconcile) Render(b *strings.Builder) { nr.Table().Render(b) }
 
 func (s NodeOwnershipStatus) color() string {
 	switch s {
@@ -192,11 +184,4 @@ func rowOwnerOrUnknown(row NodeOwnershipRow) string {
 		return "unknown"
 	}
 	return row.Owner
-}
-
-func nodeRowName(row NodeOwnershipRow) string {
-	if row.Name == "" {
-		return "-"
-	}
-	return row.Name
 }

@@ -81,46 +81,32 @@ func classifyOperator(op NodeOperator, owned []ProviderOperator, dcRegion map[st
 	return OperatorUnknown, "provider does not own this operator on-chain"
 }
 
-func (pr ProviderReconcile) HasDrift() bool {
-	for _, row := range pr.Operators {
-		if row.Status != OperatorOK {
-			return true
-		}
-	}
-	return false
-}
-
-func (pr ProviderReconcile) Render(b *strings.Builder) {
-	if len(pr.Operators) == 0 {
-		return
-	}
-	b.WriteString("node operators\n")
-	nameW := 0
-	for _, row := range pr.Operators {
-		if n := len(opRowName(row)); n > nameW {
-			nameW = n
-		}
-	}
+func (pr ProviderReconcile) Table() Table {
+	t := Table{Header: "node operators"}
 	for _, row := range pr.Operators {
 		detail := row.Detail
 		if detail != "" {
 			detail = "  (" + detail + ")"
 		}
-		status := colorize(fmt.Sprintf("%-15s", row.Status), row.Status.color())
-		fmt.Fprintf(b, "  %s  %-*s  %s%s\n", status, nameW, opRowName(row), row.OperatorID, detail)
+		t.Rows = append(t.Rows, Row{
+			Status: string(row.Status),
+			Name:   row.Name,
+			ID:     row.OperatorID,
+			Detail: detail,
+			OK:     row.Status == OperatorOK,
+			Color:  row.Status.color(),
+		})
 	}
+	return t
 }
+
+func (pr ProviderReconcile) HasDrift() bool { return pr.Table().HasDrift() }
+
+func (pr ProviderReconcile) Render(b *strings.Builder) { pr.Table().Render(b) }
 
 func (s OperatorStatus) color() string {
 	if s == OperatorOK {
 		return ansiGreen
 	}
 	return ansiRed
-}
-
-func opRowName(row OperatorRow) string {
-	if row.Name == "" {
-		return "-"
-	}
-	return row.Name
 }

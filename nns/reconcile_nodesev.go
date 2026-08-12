@@ -142,27 +142,8 @@ func (sr *NodeSevReconcile) ApplyChipVerification(byChip map[string]ChipVerifica
 	}
 }
 
-func (sr NodeSevReconcile) HasDrift() bool {
-	for _, row := range sr.Nodes {
-		switch row.Status {
-		case NodeSevMismatch, NodeSevMissing, NodeSevUndeclared, NodeSevMalformed, NodeSevUnverified:
-			return true
-		}
-	}
-	return false
-}
-
-func (sr NodeSevReconcile) Render(b *strings.Builder) {
-	if len(sr.Nodes) == 0 {
-		return
-	}
-	b.WriteString("node chip_id\n")
-	nameW := 0
-	for _, row := range sr.Nodes {
-		if n := len(nodeSevRowName(row)); n > nameW {
-			nameW = n
-		}
-	}
+func (sr NodeSevReconcile) Table() Table {
+	t := Table{Header: "node chip_id"}
 	for _, row := range sr.Nodes {
 		detail := ""
 		switch row.Status {
@@ -187,10 +168,21 @@ func (sr NodeSevReconcile) Render(b *strings.Builder) {
 				detail = fmt.Sprintf("  (%s)", row.AMD.Err)
 			}
 		}
-		status := colorize(fmt.Sprintf("%-15s", row.Status), row.Status.color())
-		fmt.Fprintf(b, "  %s  %-*s  %s%s\n", status, nameW, nodeSevRowName(row), row.NodeID, detail)
+		t.Rows = append(t.Rows, Row{
+			Status: string(row.Status),
+			Name:   row.Name,
+			ID:     row.NodeID,
+			Detail: detail,
+			OK:     row.Status == NodeSevInSync || row.Status == NodeSevUnknown,
+			Color:  row.Status.color(),
+		})
 	}
+	return t
 }
+
+func (sr NodeSevReconcile) HasDrift() bool { return sr.Table().HasDrift() }
+
+func (sr NodeSevReconcile) Render(b *strings.Builder) { sr.Table().Render(b) }
 
 // shortChip keeps a report readable: the full 64-byte value is opaque noise and
 // the leading bytes are enough to tell two chips apart.
@@ -210,11 +202,4 @@ func (s NodeSevStatus) color() string {
 	default:
 		return ansiRed
 	}
-}
-
-func nodeSevRowName(row NodeSevRow) string {
-	if row.Name == "" {
-		return "-"
-	}
-	return row.Name
 }

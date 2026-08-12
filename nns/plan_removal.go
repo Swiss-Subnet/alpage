@@ -20,6 +20,9 @@ type RemovalIssue struct {
 type RemovalPlan struct {
 	Kind   string
 	Issues []RemovalIssue
+	// Targets is every id the proposal names, so an issue-free plan can still
+	// report what it would remove.
+	Targets []string
 	// NoOp is set when every target is already absent, so the proposal would
 	// change nothing.
 	NoOp bool
@@ -32,7 +35,7 @@ type RemovalPlan struct {
 // registry still knows: an unknown node is skipped by the canister rather than
 // failing, so it is reported but not blocking.
 func planRemoveNodes(nodeIDs []string, inSubnet map[string]string, registered map[string]bool) RemovalPlan {
-	p := RemovalPlan{Kind: "remove_nodes"}
+	p := RemovalPlan{Kind: "remove_nodes", Targets: nodeIDs}
 	gone := 0
 	for _, id := range nodeIDs {
 		if sn, ok := inSubnet[id]; ok && sn != "" {
@@ -60,7 +63,7 @@ func planRemoveNodes(nodeIDs []string, inSubnet map[string]string, registered ma
 // from the payload, so the proposal executes and the operator remains. That is
 // worse than an error, since nothing reports it.
 func planRemoveNodeOperators(operatorIDs []string, ownedNodes map[string][]string, known map[string]bool) RemovalPlan {
-	p := RemovalPlan{Kind: "remove_node_operators"}
+	p := RemovalPlan{Kind: "remove_node_operators", Targets: operatorIDs}
 	gone := 0
 	for _, id := range operatorIDs {
 		if n := ownedNodes[id]; len(n) > 0 {
@@ -87,7 +90,7 @@ func planRemoveNodeOperators(operatorIDs []string, ownedNodes map[string][]strin
 // provider that is not registered is rejected outright. Operators still
 // referencing the provider are reported too, since removing it orphans them.
 func planRemoveNodeProvider(providerID string, registered bool, operators []string) RemovalPlan {
-	p := RemovalPlan{Kind: "remove_node_provider"}
+	p := RemovalPlan{Kind: "remove_node_provider", Targets: []string{providerID}}
 	if !registered {
 		p.Issues = append(p.Issues, RemovalIssue{
 			Target:   providerID,
@@ -119,6 +122,10 @@ func (p RemovalPlan) HasBlocking() bool {
 
 func (p RemovalPlan) Render() string {
 	var b strings.Builder
+	fmt.Fprintf(&b, "%s (%d target(s))\n", p.Kind, len(p.Targets))
+	for _, t := range p.Targets {
+		fmt.Fprintf(&b, "  - %s\n", t)
+	}
 	for _, i := range p.Issues {
 		marker := "note"
 		if i.Blocking {
@@ -126,15 +133,19 @@ func (p RemovalPlan) Render() string {
 		}
 		fmt.Fprintf(&b, "  %-6s %s  %s\n", marker, i.Target, i.Detail)
 	}
+	if len(p.Issues) == 0 {
+		b.WriteString("no issues; preconditions met\n")
+	}
 	return b.String()
 }
 
 // removalPreflight grades a plan the way membershipPreflight does: a blocking
 // precondition is a warning the operator has to see, an all-absent target set
-// is a no-op, and anything else is clean.
+// is a no-op, and anything else is clean. Clean still renders, so an issue-free
+// plan reports its targets instead of printing nothing.
 func removalPreflight(p RemovalPlan) Preflight {
 	if len(p.Issues) == 0 {
-		return Preflight{}
+		return Preflight{p.Render(), PreflightClean}
 	}
 	level := PreflightWarn
 	if !p.HasBlocking() && p.NoOp {

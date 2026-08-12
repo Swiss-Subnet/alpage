@@ -80,45 +80,37 @@ func Reconcile(r *Resources, subnetID string, liveMembers []string, nodeStatus m
 	return rc
 }
 
-// HasDrift reports whether any row is not in sync.
-func (rc SubnetReconcile) HasDrift() bool {
-	for _, row := range rc.Rows {
-		if row.Status != ReconcileInSync {
-			return true
-		}
-	}
-	return false
-}
-
-// Render writes a human-readable report for one subnet.
-func (rc SubnetReconcile) Render(b *strings.Builder) {
+// Table renders the subnet's rows. Label doubles as the detail column, so a
+// declared node's human name trails its id.
+func (rc SubnetReconcile) Table() Table {
 	head := rc.SubnetID
 	if rc.SubnetLabel != "" {
 		head = fmt.Sprintf("%s (%s)", rc.SubnetLabel, rc.SubnetID)
 	}
-	fmt.Fprintf(b, "subnet %s\n", head)
-	if len(rc.Rows) == 0 {
-		b.WriteString("  (no declared or live members)\n")
-		return
-	}
-	statusW, nameW := 0, 0
-	for _, row := range rc.Rows {
-		if n := len(row.Status); n > statusW {
-			statusW = n
-		}
-		if n := len(rowName(row)); n > nameW {
-			nameW = n
-		}
+	t := Table{
+		Header: "subnet " + head,
+		Empty:  "  (no declared or live members)\n",
 	}
 	for _, row := range rc.Rows {
-		label := row.Label
-		if label != "" {
-			label = "  " + label
+		detail := row.Label
+		if detail != "" {
+			detail = "  " + detail
 		}
-		status := colorize(fmt.Sprintf("%-*s", statusW, row.Status), row.Status.color())
-		fmt.Fprintf(b, "  %s  %-*s  %s%s\n", status, nameW, rowName(row), row.NodeID, label)
+		t.Rows = append(t.Rows, Row{
+			Status: string(row.Status),
+			Name:   row.Name,
+			ID:     row.NodeID,
+			Detail: detail,
+			OK:     row.Status == ReconcileInSync,
+			Color:  row.Status.color(),
+		})
 	}
+	return t
 }
+
+func (rc SubnetReconcile) HasDrift() bool { return rc.Table().HasDrift() }
+
+func (rc SubnetReconcile) Render(b *strings.Builder) { rc.Table().Render(b) }
 
 func (s ReconcileStatus) color() string {
 	switch s {
@@ -129,11 +121,4 @@ func (s ReconcileStatus) color() string {
 	default:
 		return ansiRed
 	}
-}
-
-func rowName(row ReconcileRow) string {
-	if row.Name == "" {
-		return "-"
-	}
-	return row.Name
 }

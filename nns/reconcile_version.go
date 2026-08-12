@@ -96,27 +96,8 @@ func ReconcileNodeVersionsElected(r *Resources, reported map[string]NodeVersion,
 	return vr
 }
 
-func (vr NodeVersionReconcile) HasDrift() bool {
-	for _, row := range vr.Nodes {
-		if row.Status == NodeVersionMismatch {
-			return true
-		}
-	}
-	return false
-}
-
-func (vr NodeVersionReconcile) Render(b *strings.Builder) {
-	if len(vr.Nodes) == 0 {
-		return
-	}
-	b.WriteString("node versions\n")
-	nameW := 0
-	for _, row := range vr.Nodes {
-		if n := len(versionRowName(row)); n > nameW {
-			nameW = n
-		}
-	}
-	indirect, unelected := false, false
+func (vr NodeVersionReconcile) Table() Table {
+	t := Table{Header: "node versions"}
 	for _, row := range vr.Nodes {
 		detail := ""
 		switch row.Status {
@@ -128,15 +109,37 @@ func (vr NodeVersionReconcile) Render(b *strings.Builder) {
 			detail = fmt.Sprintf("  (declared %s, status unread: %s)", shortVersion(row.Declared), row.Err)
 		}
 		if row.Indirect {
-			indirect = true
 			detail += " via dashboard"
 		}
 		if row.Unelected {
-			unelected = true
 			detail += colorize(" NOT ELECTED", ansiRed)
 		}
-		status := colorize(fmt.Sprintf("%-17s", row.Status), row.Status.color())
-		fmt.Fprintf(b, "  %s  %-*s  %s%s\n", status, nameW, versionRowName(row), row.NodeID, detail)
+		t.Rows = append(t.Rows, Row{
+			Status: string(row.Status),
+			Name:   row.Name,
+			ID:     row.NodeID,
+			Detail: detail,
+			OK:     row.Status != NodeVersionMismatch,
+			Color:  row.Status.color(),
+		})
+	}
+	return t
+}
+
+func (vr NodeVersionReconcile) HasDrift() bool { return vr.Table().HasDrift() }
+
+// Render writes the version table plus the notes that qualify it: which rows
+// came from the dashboard rather than the node, and whether the elected check
+// ran.
+func (vr NodeVersionReconcile) Render(b *strings.Builder) {
+	if len(vr.Nodes) == 0 {
+		return
+	}
+	vr.Table().Render(b)
+	indirect, unelected := false, false
+	for _, row := range vr.Nodes {
+		indirect = indirect || row.Indirect
+		unelected = unelected || row.Unelected
 	}
 	if indirect {
 		b.WriteString(colorize("  note: versions marked \"via dashboard\" were read from the public dashboard\n"+
@@ -177,11 +180,4 @@ func shortVersion(v string) string {
 		return "-"
 	}
 	return v
-}
-
-func versionRowName(row NodeVersionRow) string {
-	if row.Name == "" {
-		return "-"
-	}
-	return row.Name
 }
