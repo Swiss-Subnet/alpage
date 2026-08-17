@@ -39,6 +39,7 @@ This page documents the current development schema, ahead of the latest release.
 |-------|------|----------|-------|-------------|
 | `id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Principal of the node provider. |
 | `label` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Human-readable name. |
+| `decommissioned` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Marks a node provider removed on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it, and every operator under it, to be absent from the registry. |
 
 ### `node_operator "<name>" { }`
 
@@ -50,6 +51,7 @@ This page documents the current development schema, ahead of the latest release.
 | `label` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Human-readable name. |
 | `provider` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Id of its node provider (`node_provider.<name>.id`). |
 | `dc` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Id of its data center (`data_center.<name>.id`). |
+| `decommissioned` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Marks a node operator removed on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. Implied for every operator under a decommissioned node_provider. |
 
 ### `guestos_version "<name>" { }`
 

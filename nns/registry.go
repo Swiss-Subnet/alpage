@@ -202,8 +202,9 @@ type ProviderOperator struct {
 
 // FetchProviderOperators returns the operators (and their data centers) the
 // registry records for a node provider. Read-only, trustless: a typed query on
-// the registry canister, no HTTP explorer. An empty slice means the provider is
-// unknown to the registry.
+// the registry canister, no HTTP explorer. An empty slice means the provider
+// owns no operators; it does NOT mean the provider is absent, since the registry
+// answers Ok with an empty vector for an unregistered principal too.
 func FetchProviderOperators(host string, fetchRootKey bool, providerID principal.Principal, opts ...FetchOption) ([]ProviderOperator, error) {
 	a, err := newRegistryAgent(host, fetchRootKey, opts)
 	if err != nil {

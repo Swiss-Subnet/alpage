@@ -17,9 +17,15 @@ const (
 	OperatorDcMismatch OperatorStatus = "dc-mismatch"
 	// OperatorUnknown: the declared provider does not own this operator.
 	OperatorUnknown OperatorStatus = "unknown"
-	// OperatorProviderAbsent: the operator's declared provider returned nothing
-	// from the registry (unknown provider id).
-	OperatorProviderAbsent OperatorStatus = "provider-absent"
+	// OperatorProviderUnchecked: the declared provider was never queried, so
+	// there is nothing to compare against.
+	OperatorProviderUnchecked OperatorStatus = "provider-unchecked"
+	// OperatorDecommissioned: the operator, or its provider, is declared
+	// decommissioned and is absent from the registry as expected. Not drift.
+	OperatorDecommissioned OperatorStatus = "decommissioned"
+	// OperatorStillRegistered: declared decommissioned but the registry still
+	// records it. The removal has not landed.
+	OperatorStillRegistered OperatorStatus = "still-registered"
 )
 
 type OperatorRow struct {
@@ -38,12 +44,20 @@ type ProviderReconcile struct {
 
 // ReconcileProviders checks each declared node_operator against the operators
 // its declared provider actually owns on-chain. byProvider maps a declared
-// provider id to the (operator, dc) pairs the registry returns for it (nil or
-// missing => provider unknown). Pure: the caller fetches byProvider.
+// provider id to the (operator, dc) pairs the registry returns for it; a missing
+// key means that provider was never queried. An empty slice only means the
+// provider owns no operators, not that it is absent: the registry cannot tell
+// those apart. Pure: the caller fetches byProvider.
 func ReconcileProviders(r *Resources, byProvider map[string][]ProviderOperator) ProviderReconcile {
 	dcRegion := map[string]string{}
 	for _, dc := range r.DCs {
 		dcRegion[dc.ID] = dc.Region
+	}
+	goneProvider := make(map[string]bool, len(r.Providers))
+	for _, p := range r.Providers {
+		if p.Decommissioned {
+			goneProvider[p.ID] = true
+		}
 	}
 	var pr ProviderReconcile
 	for _, op := range r.Operators {
@@ -52,10 +66,19 @@ func ReconcileProviders(r *Resources, byProvider map[string][]ProviderOperator) 
 		}
 		row := OperatorRow{OperatorID: op.ID, Name: op.Name, Provider: op.Provider}
 		owned, known := byProvider[op.Provider]
+		// A decommissioned operator, or one under a decommissioned provider, is
+		// expected to be absent; only its lingering presence is drift.
+		retired := op.Decommissioned || goneProvider[op.Provider]
 		switch {
-		case !known || len(owned) == 0:
-			row.Status = OperatorProviderAbsent
-			row.Detail = "provider not found in registry"
+		case retired && operatorOwned(op.ID, owned):
+			row.Status = OperatorStillRegistered
+			row.Detail = retiredDetail(op, goneProvider[op.Provider])
+		case retired:
+			row.Status = OperatorDecommissioned
+			row.Detail = retiredDetail(op, goneProvider[op.Provider])
+		case !known:
+			row.Status = OperatorProviderUnchecked
+			row.Detail = "provider not queried"
 		default:
 			row.Status, row.Detail = classifyOperator(op, owned, dcRegion)
 		}
@@ -63,6 +86,28 @@ func ReconcileProviders(r *Resources, byProvider map[string][]ProviderOperator) 
 	}
 	sort.Slice(pr.Operators, func(i, j int) bool { return pr.Operators[i].OperatorID < pr.Operators[j].OperatorID })
 	return pr
+}
+
+func operatorOwned(opID string, owned []ProviderOperator) bool {
+	for _, o := range owned {
+		if o.OperatorID == opID {
+			return true
+		}
+	}
+	return false
+}
+
+// retiredDetail says which declaration retired the operator: its own, or its
+// provider's.
+func retiredDetail(op NodeOperator, providerGone bool) string {
+	switch {
+	case op.Decommissioned && providerGone:
+		return "operator and provider decommissioned"
+	case op.Decommissioned:
+		return "operator decommissioned"
+	default:
+		return "provider decommissioned"
+	}
 }
 
 func classifyOperator(op NodeOperator, owned []ProviderOperator, dcRegion map[string]string) (OperatorStatus, string) {
@@ -93,7 +138,7 @@ func (pr ProviderReconcile) Table() Table {
 			Name:   row.Name,
 			ID:     row.OperatorID,
 			Detail: detail,
-			OK:     row.Status == OperatorOK,
+			OK:     row.Status == OperatorOK || row.Status == OperatorDecommissioned,
 			Color:  row.Status.color(),
 		})
 	}
@@ -105,7 +150,7 @@ func (pr ProviderReconcile) HasDrift() bool { return pr.Table().HasDrift() }
 func (pr ProviderReconcile) Render(b *strings.Builder) { pr.Table().Render(b) }
 
 func (s OperatorStatus) color() string {
-	if s == OperatorOK {
+	if s == OperatorOK || s == OperatorDecommissioned {
 		return ansiGreen
 	}
 	return ansiRed

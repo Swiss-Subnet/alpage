@@ -55,6 +55,9 @@ type NodeProvider struct {
 	Name  string `hcl:"name,label"`
 	ID    string `hcl:"id"`
 	Label string `hcl:"label,optional"`
+	// Decommissioned marks a provider removed on-chain. Its absence from the
+	// registry is then the expected end state, not drift.
+	Decommissioned bool `hcl:"decommissioned,optional"`
 }
 
 // DataCenter is referenced from node_operator as data_center.<name>.id.
@@ -76,6 +79,9 @@ type NodeOperator struct {
 	Provider string `hcl:"provider,optional"`
 	// Dc is the id of its data center (data_center.<name>.id).
 	Dc string `hcl:"dc,optional"`
+	// Decommissioned marks an operator removed on-chain. Its absence from the
+	// registry is then the expected end state, not drift.
+	Decommissioned bool `hcl:"decommissioned,optional"`
 }
 
 // GuestosVersionRes names a GuestOS/replica version so many nodes can share one

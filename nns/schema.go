@@ -127,10 +127,14 @@ var SchemaFieldDocs = map[string]string{
 	"NodeProvider.id":    "Principal of the node provider.",
 	"NodeProvider.label": "Human-readable name.",
 
+	"NodeProvider.decommissioned": "Marks a node provider removed on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it, and every operator under it, to be absent from the registry.",
+
 	"NodeOperator.id":       "Principal of the node operator.",
 	"NodeOperator.label":    "Human-readable name.",
 	"NodeOperator.provider": "Id of its node provider (node_provider.<name>.id).",
 	"NodeOperator.dc":       "Id of its data center (data_center.<name>.id).",
+
+	"NodeOperator.decommissioned": "Marks a node operator removed on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. Implied for every operator under a decommissioned node_provider.",
 
 	"GuestosVersionRes.id":    "GuestOS/replica version hash. Spelled id, not hash, so it resolves through the same <kind>.<name>.id form as every other resource.",
 	"GuestosVersionRes.label": "Human-readable name (e.g. the release name).",
@@ -189,13 +193,15 @@ var SchemaFieldSince = map[string]string{
 	"DataCenter.label":  "v0.1.0",
 	"DataCenter.region": "v0.1.0",
 
-	"NodeProvider.id":    "v0.1.0",
-	"NodeProvider.label": "v0.1.0",
+	"NodeProvider.id":             "v0.1.0",
+	"NodeProvider.label":          "v0.1.0",
+	"NodeProvider.decommissioned": "v0.5.0",
 
-	"NodeOperator.id":       "v0.1.0",
-	"NodeOperator.label":    "v0.1.0",
-	"NodeOperator.provider": "v0.1.0",
-	"NodeOperator.dc":       "v0.1.0",
+	"NodeOperator.id":             "v0.1.0",
+	"NodeOperator.label":          "v0.1.0",
+	"NodeOperator.provider":       "v0.1.0",
+	"NodeOperator.dc":             "v0.1.0",
+	"NodeOperator.decommissioned": "v0.5.0",
 
 	"GuestosVersionRes.id":    "v0.3.0",
 	"GuestosVersionRes.label": "v0.3.0",

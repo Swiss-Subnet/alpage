@@ -57,6 +57,38 @@ func TestReconcileNodeVersionsClassifies(t *testing.T) {
 	}
 }
 
+func TestNodeVersionTableShowsFullHashes(t *testing.T) {
+	// Full hashes so the row can be copy-pasted straight into a config.
+	r := &Resources{
+		Nodes: []NodeRes{
+			{Name: "ok", ID: "n-ok", GuestosVersion: verA},
+			{Name: "drifted", ID: "n-drift", GuestosVersion: verA},
+			{Name: "unreachable", ID: "n-down", GuestosVersion: verA},
+		},
+		labels: map[string]string{},
+	}
+	live := map[string]NodeVersion{
+		"n-ok":    {Version: verA},
+		"n-drift": {Version: verB},
+		"n-down":  {Err: "no route to host"},
+	}
+	var b strings.Builder
+	ReconcileNodeVersions(r, live).Render(&b)
+	out := b.String()
+	for _, want := range []string{
+		fmt.Sprintf("(%s)", verA),
+		fmt.Sprintf("(declared %s, running %s)", verA, verB),
+		fmt.Sprintf("(declared %s, status unread: no route to host)", verA),
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, verA[:12]+",") || strings.Contains(out, verA[:12]+")") {
+		t.Errorf("output still abbreviates versions:\n%s", out)
+	}
+}
+
 func TestReconcileNodeVersionsFlagsUnelected(t *testing.T) {
 	// verB is not elected: a node running it is drift against the NNS even
 	// though it matches what the config declares.

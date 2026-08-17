@@ -102,11 +102,11 @@ func (vr NodeVersionReconcile) Table() Table {
 		detail := ""
 		switch row.Status {
 		case NodeVersionOK:
-			detail = fmt.Sprintf("  (%s)", shortVersion(row.Declared))
+			detail = fmt.Sprintf("  (%s)", displayVersion(row.Declared))
 		case NodeVersionMismatch:
-			detail = fmt.Sprintf("  (declared %s, running %s)", shortVersion(row.Declared), shortVersion(row.Actual))
+			detail = fmt.Sprintf("  (declared %s, running %s)", displayVersion(row.Declared), displayVersion(row.Actual))
 		case NodeVersionUnreachable:
-			detail = fmt.Sprintf("  (declared %s, status unread: %s)", shortVersion(row.Declared), row.Err)
+			detail = fmt.Sprintf("  (declared %s, status unread: %s)", displayVersion(row.Declared), row.Err)
 		}
 		if row.Indirect {
 			detail += " via dashboard"
@@ -170,12 +170,9 @@ func (s NodeVersionStatus) color() string {
 	}
 }
 
-// shortVersion abbreviates a git-revision version for display; other version
-// strings are left alone.
-func shortVersion(v string) string {
-	if len(v) == 40 && strings.Trim(v, "0123456789abcdef") == "" {
-		return v[:12]
-	}
+// displayVersion renders a version for display. Hashes are shown in full so a
+// row can be copy-pasted into a config without re-deriving the revision.
+func displayVersion(v string) string {
 	if v == "" {
 		return "-"
 	}
