@@ -115,3 +115,42 @@ func TestNodeRecordDecodesChipID(t *testing.T) {
 		t.Errorf("chip id = %q, want the newest record's", st.ChipID)
 	}
 }
+
+// The explorer returns node_ids as every node ever owned, with removed ones
+// listed separately and also still present in node_ids. Only the live remainder
+// may be reported, or a valid operator removal looks like it would orphan nodes.
+func TestDecodeOperatorNodesSubtractsRemoved(t *testing.T) {
+	body := []byte(`{"node_ids":["a","b","c"],"removed_node_ids":["a","c"]}`)
+	got, err := decodeOperatorNodes(body, "op")
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 || got[0] != "b" {
+		t.Errorf("got %v, want [b]", got)
+	}
+}
+
+// Every node removed means nothing is orphaned, which must read as empty rather
+// than as the full historical list.
+func TestDecodeOperatorNodesAllRemoved(t *testing.T) {
+	body := []byte(`{"node_ids":["a"],"removed_node_ids":["a"]}`)
+	got, err := decodeOperatorNodes(body, "op")
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %v, want empty", got)
+	}
+}
+
+// The older bare-array shape must still decode, so an explorer rollback does
+// not break apply.
+func TestDecodeOperatorNodesBareArray(t *testing.T) {
+	got, err := decodeOperatorNodes([]byte(`["a","b"]`), "op")
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("got %v, want [a b]", got)
+	}
+}

@@ -91,7 +91,7 @@ func run() error {
 
 func usage() error {
 	fmt.Println(`usage:
-  alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force] [--offline]
+  alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force] [--offline] [--skip-dry-run]
   alp plan   <name> [--host url]
   alp import <name> <proposal_id> --identity <key.pem> [--neuron id] [--host url] [--at RFC3339]
   alp list
@@ -112,6 +112,7 @@ func apply(argv []string) error {
 	yes := fs.Bool("yes", false, "actually submit to the live network after the dry-run")
 	force := fs.Bool("force", false, "submit even if state already records a proposal id")
 	offline := fs.Bool("offline", false, "never fetch dry-run artifacts; use only env vars and the existing cache")
+	skipDryRun := fs.Bool("skip-dry-run", false, "skip the local dry-run; preflight still runs (last resort: the payload goes unverified)")
 	pos, rest := splitArgs(argv, 1)
 	if err := fs.Parse(rest); err != nil {
 		return err
@@ -167,9 +168,15 @@ func apply(argv []string) error {
 	// Phase order is nns.ApplyPhases(): the local dry-run runs before anything
 	// touches mainnet, so a payload can be verified without neuron permissions
 	// or network access to governance.
-	fmt.Printf("== Dry run on PocketIC (%s) ==\n", name)
-	if err := dryRun(action, *offline); err != nil {
-		return fmt.Errorf("dry run failed, not submitting: %w", err)
+	if *skipDryRun {
+		fmt.Printf("== Dry run SKIPPED (%s) ==\n", name)
+		fmt.Println("!! --skip-dry-run: the payload was not verified against a local NNS.")
+		fmt.Println("!! A malformed payload will only fail after the vote. Preflight still runs below.")
+	} else {
+		fmt.Printf("== Dry run on PocketIC (%s) ==\n", name)
+		if err := dryRun(action, *offline, effHost, fetchRootKey); err != nil {
+			return fmt.Errorf("dry run failed, not submitting: %w", err)
+		}
 	}
 
 	var accessOpts []nns.FetchOption
@@ -865,10 +872,34 @@ func resolveDryRunArtifacts(offline bool) (nns.Artifacts, error) {
 	return art, nil
 }
 
+// dryRunProviderSeeds asks the action what governance state its local
+// validation needs, resolving it from mainnet. A kind that implements no seeding
+// gets an empty set and the same bare NNS as before.
+func dryRunProviderSeeds(action nns.Action, host string, fetchRootKey bool) ([]nns.ProviderSeed, []nns.SubnetSeed, error) {
+	seeder, ok := action.(nns.DryRunSeeder)
+	if !ok {
+		return nil, nil, nil
+	}
+	var opts []nns.FetchOption
+	if fetchRootKey {
+		opts = append(opts, nns.DisableQueryVerification())
+	}
+	providers, err := nns.FetchNodeProviders(host, fetchRootKey, opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list mainnet node providers: %w", err)
+	}
+	provSeeds, subnetSeeds := seeder.DryRunSeeds(providers)
+	return provSeeds, subnetSeeds, nil
+}
+
 // dryRun brings up a local NNS, submits the exact same action, and prints the
 // decoded result. Any error here aborts the real submission.
-func dryRun(action nns.Action, offline bool) error {
+func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) error {
 	art, err := resolveDryRunArtifacts(offline)
+	if err != nil {
+		return err
+	}
+	provSeeds, subnetSeeds, err := dryRunProviderSeeds(action, host, fetchRootKey)
 	if err != nil {
 		return err
 	}
@@ -885,7 +916,7 @@ func dryRun(action nns.Action, offline bool) error {
 	if err != nil {
 		return err
 	}
-	n, err := nns.BringUp(c, inst, local.Principal())
+	n, err := nns.BringUpWithSubnetsAndProviders(c, inst, local.Principal(), principal.Principal{}, subnetSeeds, provSeeds)
 	if err != nil {
 		return err
 	}

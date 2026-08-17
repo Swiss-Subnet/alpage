@@ -196,6 +196,55 @@ func (r RemoveNodeProviderAction) ProposalAction() (*governance.ProposalActionRe
 	}, nil
 }
 
+// DryRunSeeds seeds the removal target only if mainnet governance reports it as
+// registered. Seeding unconditionally would make the local ToRemove validation
+// pass for any principal, so a wrong target would only surface after the vote.
+//
+// It returns a subnet seed alongside the provider: any registry init carrying
+// mutations triggers the invariant battery, which requires subnet_list, an
+// elected replica version, and a system subnet. Provider mutations alone trap
+// with "no system subnet".
+func (r RemoveNodeProviderAction) DryRunSeeds(mainnetProviders []string) ([]ProviderSeed, []SubnetSeed) {
+	want := r.ProviderID.Encode()
+	for _, p := range mainnetProviders {
+		if p != want {
+			continue
+		}
+		// The registry half of the provider seed is required even for a
+		// governance-only check: seedProviderMutations joins an operator to a DC
+		// record, and an incomplete pair fails the registry's invariants.
+		provider := []ProviderSeed{{
+			ProviderID: want,
+			OperatorID: dryRunSeedOperator,
+			DcID:       dryRunSeedDC,
+			DcRegion:   dryRunSeedRegion,
+		}}
+		// Decode, not MustDecode: a bad constant must not panic the CLI mid-apply.
+		sid, err := principal.Decode(dryRunSeedSubnet)
+		if err != nil {
+			return provider, nil
+		}
+		subnet := []SubnetSeed{{
+			SubnetID:       sid,
+			NumNodes:       1,
+			ReplicaVersion: dryRunSeedVersion,
+		}}
+		return provider, subnet
+	}
+	return nil, nil
+}
+
+// Placeholder registry identifiers for the dry-run seed. The provider id is the
+// only field the ToRemove validation reads; the rest exist to satisfy the
+// registry's operator/DC and init invariants.
+const (
+	dryRunSeedOperator = "u7afs-z2fqh-zbqyo-jufwe-3vqqs-chc7f-k2fe4-rt66w-l4qia-keuuj-qqe"
+	dryRunSeedDC       = "dr1"
+	dryRunSeedRegion   = "Europe,CH,Zurich"
+	dryRunSeedSubnet   = "3zsyy-cnoqf-tvlun-ymf55-tkpca-ox7uw-kfxoh-7khwq-2gz43-wafem-lqe"
+	dryRunSeedVersion  = "0000000000000000000000000000000000000001"
+)
+
 // Preflight checks what governance validates before the vote (the provider is
 // registered) plus what it does not: operators still pointing at the provider
 // would be orphaned by the removal.

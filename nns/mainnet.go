@@ -26,6 +26,45 @@ func clientOptions(u *url.URL) []agent.ClientOption {
 	}
 }
 
+// FetchNodeProviders returns the node providers governance has registered, as
+// textual principals. Read-only query, no identity. This is the list
+// AddOrRemoveNodeProvider::ToRemove validates against, and the registry's
+// provider queries are NOT a substitute: a provider whose nodes and operators
+// are already removed still has a governance record.
+func FetchNodeProviders(host string, fetchRootKey bool, opts ...FetchOption) ([]string, error) {
+	if host == "" {
+		host = MainnetHost
+	}
+	u, err := url.Parse(host)
+	if err != nil {
+		return nil, fmt.Errorf("parse host %q: %w", host, err)
+	}
+	var o fetchOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+	a, err := governance.NewGovernanceAgent(GovernanceID, agent.Config{
+		ClientConfig:                   clientOptions(u),
+		FetchRootKey:                   fetchRootKey,
+		DisableSignedQueryVerification: o.disableQueryVerify,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("new governance agent: %w", err)
+	}
+	resp, err := a.ListNodeProviders()
+	if err != nil {
+		return nil, fmt.Errorf("list_node_providers: %w", err)
+	}
+	out := make([]string, 0, len(resp.NodeProviders))
+	for _, np := range resp.NodeProviders {
+		if np.Id == nil {
+			continue
+		}
+		out = append(out, np.Id.Encode())
+	}
+	return out, nil
+}
+
 // SubmitMainnet submits an Action to a live IC as a signed ingress message and
 // returns the new proposal id. id must be the neuron's controller or a
 // registered hotkey. fetchRootKey must be false for real mainnet and true only

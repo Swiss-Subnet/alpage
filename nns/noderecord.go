@@ -131,11 +131,39 @@ func FetchOperatorNodes(explorerBase, operatorID string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read operator nodes %s: %w", operatorID, err)
 	}
+	return decodeOperatorNodes(body, operatorID)
+}
+
+// operatorNodesResponse is the explorer's current shape. node_ids is every node
+// the operator has ever owned, so the removed ones must be subtracted to get the
+// live set; callers use it to decide whether nodes would be orphaned.
+type operatorNodesResponse struct {
+	NodeIDs        []string `json:"node_ids"`
+	RemovedNodeIDs []string `json:"removed_node_ids"`
+}
+
+// decodeOperatorNodes accepts both the object shape and the bare array the
+// explorer used to return, so a rollback on their side does not break apply.
+func decodeOperatorNodes(body []byte, operatorID string) ([]string, error) {
 	var ids []string
-	if err := json.Unmarshal(body, &ids); err != nil {
+	if err := json.Unmarshal(body, &ids); err == nil {
+		return ids, nil
+	}
+	var resp operatorNodesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("decode operator nodes %s: %w", operatorID, err)
 	}
-	return ids, nil
+	removed := make(map[string]bool, len(resp.RemovedNodeIDs))
+	for _, id := range resp.RemovedNodeIDs {
+		removed[id] = true
+	}
+	live := make([]string, 0, len(resp.NodeIDs))
+	for _, id := range resp.NodeIDs {
+		if !removed[id] {
+			live = append(live, id)
+		}
+	}
+	return live, nil
 }
 
 // DefaultRegistryExplorer is the registry explorer this build queries for

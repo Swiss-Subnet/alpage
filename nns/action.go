@@ -35,6 +35,16 @@ type Action interface {
 	Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error)
 }
 
+// DryRunSeeder is an Action whose local validation needs governance state a
+// freshly-initialized NNS lacks. The dry run hands over the providers mainnet
+// reports and seeds what comes back, so the local check tests the real question
+// instead of failing on empty state. The subnet seeds it returns keep the
+// registry's init invariants satisfied, which fire for any non-empty mutation
+// set.
+type DryRunSeeder interface {
+	DryRunSeeds(mainnetProviders []string) ([]ProviderSeed, []SubnetSeed)
+}
+
 // Meta is the common proposal metadata every kind carries. Concrete actions
 // embed it, so it supplies both the fields and the Metadata accessor.
 type Meta struct {
