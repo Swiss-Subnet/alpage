@@ -10,8 +10,11 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aviate-labs/agent-go/principal"
+	"github.com/swiss-subnet/alpage/gen/governance"
+	governancepb "github.com/swiss-subnet/alpage/nns/pb/governance"
 	"github.com/swiss-subnet/alpage/pocketic"
 )
 
@@ -60,7 +63,7 @@ func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds
 	if err := c.AutoProgress(inst); err != nil {
 		t.Fatalf("auto_progress: %v", err)
 	}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_ = c.Tick(inst)
 	}
 	var url string
@@ -200,6 +203,167 @@ func TestSubmitDeployGuestosFixture(t *testing.T) {
 	// named the constant; only the number is governance's record of what we sent.
 	if !strings.Contains(rendered, "ExecuteNnsFunction #11") {
 		t.Errorf("expected nns function 11 in rendered proposal, got:\n%s", rendered)
+	}
+}
+
+// Governance's terminal proposal statuses. A proposal that reaches Failed was
+// adopted and then trapped in the target canister, which is the failure mode
+// alpage's preflights and dry-run exist to catch before the vote.
+const (
+	proposalExecuted = int32(governancepb.ProposalStatus_PROPOSAL_STATUS_EXECUTED)
+	proposalFailed   = int32(governancepb.ProposalStatus_PROPOSAL_STATUS_FAILED)
+)
+
+// awaitTerminal polls a submitted proposal until its execution has either
+// succeeded or failed. Adoption is not what is being waited on, since the seeded
+// neuron holds the whole voting power and a proposal is adopted on submission.
+// Governance's inter-canister call into the registry is, and it takes a few
+// rounds; the instance runs with auto_progress so those rounds advance on their
+// own.
+func awaitTerminal(t *testing.T, n *NNS, pid uint64) *governance.ProposalInfo {
+	t.Helper()
+	for range 60 {
+		pi, err := n.GetProposalInfo(pid)
+		if err != nil {
+			t.Fatalf("get proposal info: %v", err)
+		}
+		if pi.Status == proposalExecuted || pi.Status == proposalFailed {
+			return pi
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("proposal %d neither executed nor failed", pid)
+	return nil
+}
+
+// awaitExecuted is awaitTerminal for the proposals a test expects to land.
+func awaitExecuted(t *testing.T, n *NNS, pid uint64) *governance.ProposalInfo {
+	t.Helper()
+	pi := awaitTerminal(t, n, pid)
+	if pi.Status != proposalExecuted {
+		t.Fatalf("proposal %d failed to execute: %+v", pid, pi.FailureReason)
+	}
+	return pi
+}
+
+// TestUpdateSubnetExecutesAgainstSeededSubnet is the end-to-end check for the
+// claim the whole kind rests on: the registry merges this payload field by
+// field, so a proposal changes what it declares and leaves everything else
+// alone. Reading the Rust says so; only executing two proposals against a real
+// registry canister proves it.
+//
+// It also pins the NNS function number the way the deploy_guestos e2e does:
+// governance stores the number alpage sent, so reading #7 back is ground truth
+// no in-repo constant can fake.
+func TestUpdateSubnetExecutesAgainstSeededSubnet(t *testing.T) {
+	seeds := []SubnetSeed{{SubnetID: subnetX, NumNodes: 3, ReplicaVersion: "0000000000000000000000000000000000000001"}}
+	n, _, url := startNNSSeeded(t, principal.Principal{}, seeds, true)
+	neuron := n.ProposerNeuron()
+	read := []FetchOption{DisableQueryVerification()}
+
+	// Preflight over the gateway, against the seeded record: the subnet is not
+	// halted, so halting it is a real change.
+	halted := true
+	pf, err := UpdateSubnetAction{SubnetID: subnetX, Settings: SubnetSettings{IsHalted: &halted}}.
+		Preflight(url, true, read...)
+	if err != nil {
+		t.Fatalf("preflight: %v", err)
+	}
+	if pf.Level != PreflightClean {
+		t.Errorf("halting an unhalted subnet should be Clean, got %v\n%s", pf.Level, pf.Report)
+	}
+
+	// First proposal: one field, which must land.
+	cap42 := uint64(42)
+	pid, err := n.SubmitAs(n.Proposer, neuron, UpdateSubnetAction{
+		Meta:     Meta{Title: "cap canisters", Summary: "e2e"},
+		SubnetID: subnetX,
+		Settings: SubnetSettings{MaxNumberOfCanisters: &cap42},
+	})
+	if err != nil {
+		t.Fatalf("submit update_subnet: %v", err)
+	}
+	rendered := RenderVerbose(awaitExecuted(t, n, pid))
+	t.Logf("\n%s", rendered)
+	for _, want := range []string{
+		"ExecuteNnsFunction #7",
+		"update_subnet",
+		"max_number_of_canisters: 42",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered proposal missing %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, "is_halted") {
+		t.Errorf("rendered proposal shows is_halted, which it does not declare:\n%s", rendered)
+	}
+
+	rec, err := getSubnetRecord(url, true, subnetX, read)
+	if err != nil {
+		t.Fatalf("read subnet record: %v", err)
+	}
+	if rec.MaxNumberOfCanisters != 42 {
+		t.Fatalf("max_number_of_canisters = %d, want 42", rec.MaxNumberOfCanisters)
+	}
+
+	// Second proposal: a different single field. If the registry replaced the
+	// record rather than merging it, the cap set above would be back to 0 and
+	// every "omitted means untouched" claim in the docs would be wrong.
+	pid, err = n.SubmitAs(n.Proposer, neuron, UpdateSubnetAction{
+		Meta:     Meta{Title: "halt subnet", Summary: "e2e"},
+		SubnetID: subnetX,
+		Settings: SubnetSettings{IsHalted: &halted},
+	})
+	if err != nil {
+		t.Fatalf("submit update_subnet (halt): %v", err)
+	}
+	awaitExecuted(t, n, pid)
+
+	rec, err = getSubnetRecord(url, true, subnetX, read)
+	if err != nil {
+		t.Fatalf("read subnet record after halt: %v", err)
+	}
+	if !rec.IsHalted {
+		t.Error("is_halted did not take effect")
+	}
+	if rec.MaxNumberOfCanisters != 42 {
+		t.Errorf("max_number_of_canisters = %d after a proposal that did not declare it; want 42 (untouched)", rec.MaxNumberOfCanisters)
+	}
+	if got := len(rec.Membership); got != 3 {
+		t.Errorf("membership has %d nodes after update_subnet; want the seeded 3 untouched", got)
+	}
+
+	// The now-halted, capped subnet is what preflight should read back: the same
+	// halt is a no-op, which apply refuses without --force.
+	pf, err = UpdateSubnetAction{SubnetID: subnetX, Settings: SubnetSettings{IsHalted: &halted}}.
+		Preflight(url, true, read...)
+	if err != nil {
+		t.Fatalf("preflight after halt: %v", err)
+	}
+	if pf.Level != PreflightNoOp {
+		t.Errorf("halting an already-halted subnet should be NoOp, got %v\n%s", pf.Level, pf.Report)
+	}
+
+	// Same instance, third proposal: the change the registry refuses outright.
+	// The seeded subnet has no features record, so sev_enabled reads false and
+	// asking for true is the rejected transition. It must end in Failed. That is
+	// the post-adoption trap the dry-run surfaces, and the reason a proposal that
+	// looks well-formed cannot be trusted without one.
+	on := SubnetFeatureSet{SevEnabled: true}
+	pid, err = n.SubmitAs(n.Proposer, neuron, UpdateSubnetAction{
+		Meta:     Meta{Title: "enable sev", Summary: "e2e"},
+		SubnetID: subnetX,
+		Settings: SubnetSettings{Features: &on},
+	})
+	if err != nil {
+		t.Fatalf("submit update_subnet (sev): %v", err)
+	}
+	pi := awaitTerminal(t, n, pid)
+	if pi.Status != proposalFailed {
+		t.Fatalf("enabling sev_enabled reached status %d; the registry was expected to reject it", pi.Status)
+	}
+	if pi.FailureReason == nil || !strings.Contains(pi.FailureReason.ErrorMessage, "sev_enabled") {
+		t.Errorf("execution failed for the wrong reason: %+v", pi.FailureReason)
 	}
 }
 

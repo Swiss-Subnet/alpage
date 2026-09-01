@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	governancepb "github.com/swiss-subnet/alpage/nns/pb/governance"
 )
 
 // ProposalState is a proposal's lifecycle state as recorded in state.json. It
@@ -35,16 +37,16 @@ func (s ProposalState) Terminal() bool {
 // stateFromGovernance maps governance's numeric status enum onto the persisted
 // state. An unrecognized value yields the empty state rather than a guess.
 func stateFromGovernance(status int32) ProposalState {
-	switch status {
-	case 1:
+	switch governancepb.ProposalStatus(status) {
+	case governancepb.ProposalStatus_PROPOSAL_STATUS_OPEN:
 		return StateOpen
-	case 2:
+	case governancepb.ProposalStatus_PROPOSAL_STATUS_REJECTED:
 		return StateRejected
-	case 3:
+	case governancepb.ProposalStatus_PROPOSAL_STATUS_ADOPTED:
 		return StateAdopted
-	case 4:
+	case governancepb.ProposalStatus_PROPOSAL_STATUS_EXECUTED:
 		return StateExecuted
-	case 5:
+	case governancepb.ProposalStatus_PROPOSAL_STATUS_FAILED:
 		return StateFailed
 	}
 	return ProposalState("")

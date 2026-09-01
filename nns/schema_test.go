@@ -63,7 +63,8 @@ func TestSchemaBlockSince(t *testing.T) {
 		"proposal": "v0.1.0", "deploy_guestos": "v0.1.0", "add / remove": "v0.1.0",
 		"guestos_version": "v0.3.0", "membership": "v0.3.0",
 		"remove_nodes": "v0.5.0", "remove_node_operators": "v0.5.0",
-		"remove_node_provider": "v0.5.0",
+		"remove_node_provider": "v0.5.0", "update_subnet": "v0.5.0",
+		"features": "v0.5.0", "resource_limits": "v0.5.0",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("block Since map:\ngot  %v\nwant %v", got, want)

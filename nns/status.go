@@ -76,7 +76,7 @@ func statusFromGovernance(info *governance.ProposalInfo) *ProposalStatus {
 	state := stateFromGovernance(info.Status)
 	ps := &ProposalStatus{
 		Source:      SourceGovernance,
-		Label:       label(statusName, info.Status),
+		Label:       statusLabel(info.Status),
 		State:       state,
 		ResolvedAt:  resolutionTime(state, info.ExecutedTimestampSeconds, info.FailedTimestampSeconds, info.DecidedTimestampSeconds),
 		SubmittedAt: unixRFC3339(info.ProposalTimestampSeconds),

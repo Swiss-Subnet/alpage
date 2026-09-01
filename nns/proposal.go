@@ -60,30 +60,45 @@ func (n *NNS) GetProposalInfo(id uint64) (*governance.ProposalInfo, error) {
 	return out, nil
 }
 
-// topicName / statusName render the numeric enums the way the NNS UI labels them.
-var topicName = map[int32]string{0: "Unspecified", 7: "SubnetManagement", 12: "IcOsVersionDeployment"}
-var statusName = map[int32]string{1: "Open", 2: "Rejected", 3: "Adopted", 4: "Executed", 5: "Failed"}
+// statusLabel and topicLabel render governance's numeric enums the way the NNS
+// UI labels them, deriving the names from the generated protobuf enums. Written
+// out by hand they drifted: the topic table named 3 of the 16 topics governance
+// has, so every other topic printed as a bare number.
+func statusLabel(v int32) string {
+	return enumLabel(governancepb.ProposalStatus(v).String(), "PROPOSAL_STATUS_", v)
+}
+
+func topicLabel(v int32) string {
+	return enumLabel(governancepb.Topic(v).String(), "TOPIC_", v)
+}
+
+// enumLabel turns PROPOSAL_STATUS_EXECUTED into "Executed (4)". The number comes
+// off the wire, so a value this build has no name for renders as the number
+// alone; protobuf's String() returns the decimal in that case, which is what the
+// missing prefix detects.
+func enumLabel(name, prefix string, v int32) string {
+	rest, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return fmt.Sprintf("%d", v)
+	}
+	var b strings.Builder
+	for _, word := range strings.Split(strings.ToLower(rest), "_") {
+		if word == "" {
+			continue
+		}
+		b.WriteString(strings.ToUpper(word[:1]))
+		b.WriteString(word[1:])
+	}
+	return fmt.Sprintf("%s (%d)", b.String(), v)
+}
 
 // funcName / renderer map an NNS function number to its label and payload
 // decoder, so rendering dispatches on the stored proposal's function without
-// caring which Action produced it. Keyed by int32 rather than NnsFunction: the
-// number comes off the wire, so it may name a function this build has no enum
-// value for.
-var funcName = map[int32]string{
-	int32(governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP):           "change_subnet_membership",
-	int32(governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES): "deploy_guestos_to_all_subnet_nodes",
-}
-var renderer = map[int32]Action{
-	int32(governancepb.NnsFunction_NNS_FUNCTION_CHANGE_SUBNET_MEMBERSHIP):           MembershipProposal{},
-	int32(governancepb.NnsFunction_NNS_FUNCTION_DEPLOY_GUESTOS_TO_ALL_SUBNET_NODES): DeployGuestosAction{},
-}
-
-func label(m map[int32]string, v int32) string {
-	if s, ok := m[v]; ok {
-		return fmt.Sprintf("%s (%d)", s, v)
-	}
-	return fmt.Sprintf("%d", v)
-}
+// caring which Action produced it. Both come from the kinds table, so a kind
+// renders as soon as it can be decoded. Keyed by int32 rather than NnsFunction:
+// the number comes off the wire, so it may name a function this build has no
+// enum value for.
+var funcName, renderer = renderTables()
 
 // Render produces the human-readable view of a stored proposal, decoding the
 // nested ExecuteNnsFunction payload the same information the NNS dapp displays.
@@ -101,14 +116,14 @@ func render(pi *governance.ProposalInfo, verbose bool) string {
 		id = pi.Id.Id
 	}
 	fmt.Fprintf(&b, "Proposal %d\n", id)
-	fmt.Fprintf(&b, "  Status: %s\n", label(statusName, pi.Status))
+	fmt.Fprintf(&b, "  Status: %s\n", statusLabel(pi.Status))
 	if t := pi.LatestTally; t != nil {
 		fmt.Fprintf(&b, "  Tally:  yes=%d no=%d total=%d\n", t.Yes, t.No, t.Total)
 	}
 	if fr := pi.FailureReason; fr != nil {
 		fmt.Fprintf(&b, "  Failure: %s\n", fr.ErrorMessage)
 	}
-	fmt.Fprintf(&b, "  Topic:  %s\n", label(topicName, pi.Topic))
+	fmt.Fprintf(&b, "  Topic:  %s\n", topicLabel(pi.Topic))
 	if pi.Proposer != nil {
 		fmt.Fprintf(&b, "  Proposer neuron: %d\n", pi.Proposer.Id)
 	}

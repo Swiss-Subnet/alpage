@@ -95,7 +95,7 @@ This page documents the current development schema, ahead of the latest release.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
-| `kind` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal kind; selects the nested block (membership, deploy_guestos). |
+| `kind` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider). |
 | `title` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal title shown on the NNS. |
 | `summary` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal summary (markdown). |
 | `url` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Reference URL (e.g. forum thread). |
@@ -119,14 +119,29 @@ This page documents the current development schema, ahead of the latest release.
 | `subnet_id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Subnet whose nodes to upgrade (`subnet.<name>.id`). |
 | `replica_version_id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Replica version to deploy to every node in the subnet (`guestos_version.<name>.id`, or the hash itself). Must be elected by the NNS: preflight checks the registry for a `replica_version_<id>` record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. `--force` submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable. |
 
-### `add / remove { }`
+### `update_subnet { }`
 
-<span class="since" title="Introduced in v0.1.0">v0.1.0</span> Inside a [membership](#membership-) block: a node to add to or remove from the subnet.
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "update_subnet": update_subnet (UPDATE_CONFIG_OF_SUBNET). Changes a subnet's configuration record. Every field is optional and an omitted one is left untouched on-chain, so a proposal changes exactly what it declares. Preflight diffs every declared field against the current record. Two payload fields are not settings here: subnet_type, which the registry asserts is unchanged, and a sev_enabled change, which it rejects outright.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
-| `id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Node id (`node.<name>.id`). |
-| `label` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Optional human-readable name. |
+| `subnet_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Subnet whose configuration changes (`subnet.<name>.id`). |
+| `is_halted` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether the subnet is halted: a halted subnet no longer creates or executes blocks. This is how a subnet is frozen for a recovery, and setting it back to false is how it resumes. |
+| `halt_at_cup_height` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Halt the subnet once it reaches the next CUP height rather than immediately, so it stops at a known state. The registry resets this flag when a new CUP proposal is approved and sets is_halted instead, so the subnet stays halted until a later proposal sets is_halted = false. |
+| `max_number_of_canisters` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum number of canisters that may be present on the subnet at any one time. 0 does not mean unlimited: it means the replica's own default applies. |
+| `ssh_readonly_access` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Public keys whose owners get "readonly" SSH access to every replica on the subnet, for when a subnet recovery has to be performed. The list is replaced, not merged, so it must name every key that keeps access; an empty list revokes all of them. Preflight flags a declared list that clears existing entries. |
+| `ssh_backup_access` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Public keys whose owners get "backup" SSH access to the subnet's nodes, which is what makes backing up the NNS possible. Replaced wholesale like ssh_readonly_access. |
+| `subnet_admins` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principals that have admin privileges on the subnet. Replaced wholesale, so the list must be complete. |
+| `features` | block | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | The subnet's feature flags. Replaced wholesale; see the [features](#features-) block. |
+| `resource_limits` | block | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | The subnet's resource-consumption limits. Replaced wholesale; see the [resource_limits](#resource_limits-) block. |
+| `unit_delay_millis` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Unit delay for the blockmaker, in milliseconds. |
+| `initial_notary_delay_millis` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Initial delay for the notary, in milliseconds, which gives rank-0 blocks time to propagate. |
+| `dkg_interval_length` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Length of every DKG interval, counted in the rounds that follow the DKG summary. |
+| `dkg_dealings_per_block` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Upper bound on the number of DKG dealings allowed in one block. |
+| `max_ingress_bytes_per_message` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum bytes per ingress message. A hard cap: a message over the limit is dropped. |
+| `max_ingress_bytes_per_block` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | How big an ingress payload may be when held in memory, which may exceed max_block_payload_size since ingress messages are stripped before a block is disseminated. 0 means the replica's built-in default; too high a value drives up replica memory use. |
+| `max_ingress_messages_per_block` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum number of ingress messages per block. |
+| `max_block_payload_size` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum size in bytes a block payload may have when sent over the wire. Setting it too high slows block delivery to peers, which can cause forks as higher-rank blocks get proposed meanwhile. |
 
 ### `remove_nodes { }`
 
@@ -151,6 +166,34 @@ This page documents the current development schema, ahead of the latest release.
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
 | `node_provider_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the node provider to remove (`node_provider.<name>.id`). |
+
+### `add / remove { }`
+
+<span class="since" title="Introduced in v0.1.0">v0.1.0</span> Inside a [membership](#membership-) block: a node to add to or remove from the subnet.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Node id (`node.<name>.id`). |
+| `label` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Optional human-readable name. |
+
+### `features { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Inside an [update_subnet](#update_subnet-) block: the subnet's feature flags. Sending it replaces the whole features record rather than merging, so all three fields are required: an omitted one would be written as false. sev_enabled must therefore restate what the subnet already has; the registry rejects a change to it.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `canister_sandboxing` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether canister execution happens in a sandboxed process. Disabled by default. |
+| `http_requests` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether canisters on the subnet may perform outbound HTTP(S) requests. |
+| `sev_enabled` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether the subnet runs with SEV-SNP enabled. Required because the features record is replaced wholesale, but it cannot be changed: the registry only accepts sev_enabled as it was set when the subnet was created, and traps on any change after the proposal is adopted. State the subnet's current value; preflight and the dry-run both reject anything else. |
+
+### `resource_limits { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Inside an [update_subnet](#update_subnet-) block: the subnet's state-size limits. Replaced wholesale like features, so both fields are required.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `maximum_state_size` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum subnet state size in bytes. |
+| `maximum_state_delta` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum subnet state delta in bytes. |
 
 ## Schema History
 

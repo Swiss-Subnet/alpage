@@ -1,5 +1,7 @@
 package nns
 
+import "slices"
+
 // The HCL config schema is defined by the `hcl:"..."` struct tags on the types
 // below; docs/config.md is generated from them by cmd/schemadoc (go generate
 // ./nns). This file supplies the human prose the tags cannot: a description per
@@ -19,10 +21,13 @@ type SchemaBlock struct {
 	Since  string   // tag that introduced the block under this name
 }
 
-// SchemaBlocks is the full set of documented top-level HCL blocks. Nested blocks
-// (a proposal's kind-specific body) are documented via their own entry with the
-// nesting noted in Doc.
-var SchemaBlocks = []SchemaBlock{
+// SchemaBlocks is the full set of documented HCL blocks, in the order the docs
+// present them: the resource and top-level blocks, then one per proposal kind
+// from the kinds table, then the blocks nested inside those.
+var SchemaBlocks = slices.Concat(schemaTopBlocks, kindSchemaBlocks(), schemaNestedBlocks)
+
+// schemaTopBlocks are the blocks that belong to no single proposal kind.
+var schemaTopBlocks = []SchemaBlock{
 	{
 		Name: "subnet", File: "resources.hcl", Labels: []string{"name"},
 		Doc:   "A subnet, referenced from proposals and nodes as subnet.<name>.id.",
@@ -71,18 +76,11 @@ var SchemaBlocks = []SchemaBlock{
 		Type:  Spec{},
 		Since: "v0.1.0",
 	},
-	{
-		Name: "membership", File: "proposals.hcl",
-		Doc:   "Nested in a proposal of kind \"membership\": change_subnet_membership. Holds add/remove node blocks. Renamed from resize in v0.3.0; a config written for v0.2.0 or earlier must rename the block and its kind.",
-		Type:  membershipBody{},
-		Since: "v0.3.0",
-	},
-	{
-		Name: "deploy_guestos", File: "proposals.hcl",
-		Doc:   "Nested in a proposal of kind \"deploy_guestos\": deploy_guestos_to_all_subnet_nodes.",
-		Type:  deployGuestosBody{},
-		Since: "v0.1.0",
-	},
+}
+
+// schemaNestedBlocks are the blocks that appear inside a kind's block rather
+// than at the top level, so they have no kinds-table entry of their own.
+var schemaNestedBlocks = []SchemaBlock{
 	{
 		Name: "add / remove", File: "proposals.hcl",
 		Doc:   "Inside a membership block: a node to add to or remove from the subnet.",
@@ -90,21 +88,15 @@ var SchemaBlocks = []SchemaBlock{
 		Since: "v0.1.0",
 	},
 	{
-		Name: "remove_nodes", File: "proposals.hcl",
-		Doc:   "Nested in a proposal of kind \"remove_nodes\": deregisters nodes, freeing their operators' allowance. Holds one node block per node. The registry rejects a node that is still a subnet member, so remove it from its subnet first; preflight checks this before the proposal is cut.",
-		Type:  removeNodesBody{},
+		Name: "features", File: "proposals.hcl",
+		Doc:   "Inside an update_subnet block: the subnet's feature flags. Sending it replaces the whole features record rather than merging, so all three fields are required: an omitted one would be written as false. sev_enabled must therefore restate what the subnet already has; the registry rejects a change to it.",
+		Type:  subnetFeaturesBody{},
 		Since: "v0.5.0",
 	},
 	{
-		Name: "remove_node_operators", File: "proposals.hcl",
-		Doc:   "Nested in a proposal of kind \"remove_node_operators\": deletes node operator records. The registry silently skips an operator that still owns nodes, so deregister its nodes first; preflight checks this.",
-		Type:  removeNodeOperatorsBody{},
-		Since: "v0.5.0",
-	},
-	{
-		Name: "remove_node_provider", File: "proposals.hcl",
-		Doc:   "Nested in a proposal of kind \"remove_node_provider\": removes a node provider. Unlike the other kinds this is a native governance action rather than an ExecuteNnsFunction. Governance rejects a provider it does not know, and removing one that still has operators orphans them; preflight checks both.",
-		Type:  removeNodeProviderBody{},
+		Name: "resource_limits", File: "proposals.hcl",
+		Doc:   "Inside an update_subnet block: the subnet's state-size limits. Replaced wholesale like features, so both fields are required.",
+		Type:  resourceLimitsBody{},
 		Since: "v0.5.0",
 	},
 }
@@ -152,7 +144,7 @@ var SchemaFieldDocs = map[string]string{
 	"Provider.neuron":         "Proposer neuron id.",
 	"Provider.fetch_root_key": "Whether to fetch the IC root key. Unset defaults to true for non-mainnet hosts.",
 
-	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos).",
+	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider).",
 	"Spec.title":   "Proposal title shown on the NNS.",
 	"Spec.summary": "Proposal summary (markdown).",
 	"Spec.url":     "Reference URL (e.g. forum thread).",
@@ -170,6 +162,32 @@ var SchemaFieldDocs = map[string]string{
 	"removeNodesBody.node":                    "A node to deregister. Repeat the block for each one.",
 	"removeNodeOperatorsBody.operators":       "Ids of the node operators whose records to delete (node_operator.<name>.id).",
 	"removeNodeProviderBody.node_provider_id": "Principal of the node provider to remove (node_provider.<name>.id).",
+
+	"updateSubnetBody.subnet_id":               "Subnet whose configuration changes (subnet.<name>.id).",
+	"updateSubnetBody.is_halted":               "Whether the subnet is halted: a halted subnet no longer creates or executes blocks. This is how a subnet is frozen for a recovery, and setting it back to false is how it resumes.",
+	"updateSubnetBody.halt_at_cup_height":      "Halt the subnet once it reaches the next CUP height rather than immediately, so it stops at a known state. The registry resets this flag when a new CUP proposal is approved and sets is_halted instead, so the subnet stays halted until a later proposal sets is_halted = false.",
+	"updateSubnetBody.max_number_of_canisters": "Maximum number of canisters that may be present on the subnet at any one time. 0 does not mean unlimited: it means the replica's own default applies.",
+	"updateSubnetBody.ssh_readonly_access":     "Public keys whose owners get \"readonly\" SSH access to every replica on the subnet, for when a subnet recovery has to be performed. The list is replaced, not merged, so it must name every key that keeps access; an empty list revokes all of them. Preflight flags a declared list that clears existing entries.",
+	"updateSubnetBody.ssh_backup_access":       "Public keys whose owners get \"backup\" SSH access to the subnet's nodes, which is what makes backing up the NNS possible. Replaced wholesale like ssh_readonly_access.",
+	"updateSubnetBody.subnet_admins":           "Principals that have admin privileges on the subnet. Replaced wholesale, so the list must be complete.",
+	"updateSubnetBody.features":                "The subnet's feature flags. Replaced wholesale; see the features block.",
+	"updateSubnetBody.resource_limits":         "The subnet's resource-consumption limits. Replaced wholesale; see the resource_limits block.",
+
+	"updateSubnetBody.unit_delay_millis":              "Unit delay for the blockmaker, in milliseconds.",
+	"updateSubnetBody.initial_notary_delay_millis":    "Initial delay for the notary, in milliseconds, which gives rank-0 blocks time to propagate.",
+	"updateSubnetBody.dkg_interval_length":            "Length of every DKG interval, counted in the rounds that follow the DKG summary.",
+	"updateSubnetBody.dkg_dealings_per_block":         "Upper bound on the number of DKG dealings allowed in one block.",
+	"updateSubnetBody.max_ingress_bytes_per_message":  "Maximum bytes per ingress message. A hard cap: a message over the limit is dropped.",
+	"updateSubnetBody.max_ingress_bytes_per_block":    "How big an ingress payload may be when held in memory, which may exceed max_block_payload_size since ingress messages are stripped before a block is disseminated. 0 means the replica's built-in default; too high a value drives up replica memory use.",
+	"updateSubnetBody.max_ingress_messages_per_block": "Maximum number of ingress messages per block.",
+	"updateSubnetBody.max_block_payload_size":         "Maximum size in bytes a block payload may have when sent over the wire. Setting it too high slows block delivery to peers, which can cause forks as higher-rank blocks get proposed meanwhile.",
+
+	"subnetFeaturesBody.canister_sandboxing": "Whether canister execution happens in a sandboxed process. Disabled by default.",
+	"subnetFeaturesBody.http_requests":       "Whether canisters on the subnet may perform outbound HTTP(S) requests.",
+	"subnetFeaturesBody.sev_enabled":         "Whether the subnet runs with SEV-SNP enabled. Required because the features record is replaced wholesale, but it cannot be changed: the registry only accepts sev_enabled as it was set when the subnet was created, and traps on any change after the proposal is adopted. State the subnet's current value; preflight and the dry-run both reject anything else.",
+
+	"resourceLimitsBody.maximum_state_size":  "Maximum subnet state size in bytes.",
+	"resourceLimitsBody.maximum_state_delta": "Maximum subnet state delta in bytes.",
 }
 
 // SchemaUnreleased is the version Since values carry before that version is
@@ -239,4 +257,30 @@ var SchemaFieldSince = map[string]string{
 	"removeNodesBody.node":                    "v0.5.0",
 	"removeNodeOperatorsBody.operators":       "v0.5.0",
 	"removeNodeProviderBody.node_provider_id": "v0.5.0",
+
+	"updateSubnetBody.subnet_id":               "v0.5.0",
+	"updateSubnetBody.is_halted":               "v0.5.0",
+	"updateSubnetBody.halt_at_cup_height":      "v0.5.0",
+	"updateSubnetBody.max_number_of_canisters": "v0.5.0",
+	"updateSubnetBody.ssh_readonly_access":     "v0.5.0",
+	"updateSubnetBody.ssh_backup_access":       "v0.5.0",
+	"updateSubnetBody.subnet_admins":           "v0.5.0",
+	"updateSubnetBody.features":                "v0.5.0",
+	"updateSubnetBody.resource_limits":         "v0.5.0",
+
+	"updateSubnetBody.unit_delay_millis":              "v0.5.0",
+	"updateSubnetBody.initial_notary_delay_millis":    "v0.5.0",
+	"updateSubnetBody.dkg_interval_length":            "v0.5.0",
+	"updateSubnetBody.dkg_dealings_per_block":         "v0.5.0",
+	"updateSubnetBody.max_ingress_bytes_per_message":  "v0.5.0",
+	"updateSubnetBody.max_ingress_bytes_per_block":    "v0.5.0",
+	"updateSubnetBody.max_ingress_messages_per_block": "v0.5.0",
+	"updateSubnetBody.max_block_payload_size":         "v0.5.0",
+
+	"subnetFeaturesBody.canister_sandboxing": "v0.5.0",
+	"subnetFeaturesBody.http_requests":       "v0.5.0",
+	"subnetFeaturesBody.sev_enabled":         "v0.5.0",
+
+	"resourceLimitsBody.maximum_state_size":  "v0.5.0",
+	"resourceLimitsBody.maximum_state_delta": "v0.5.0",
 }

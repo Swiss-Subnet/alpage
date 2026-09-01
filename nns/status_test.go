@@ -14,6 +14,25 @@ func piWithStatus(id uint64, status int32) *governance.ProposalInfo {
 	}
 }
 
+// The status and topic labels are derived from the generated enums rather than
+// hand-listed, so this pins the wording the NNS UI uses, the topics the old
+// hand-written table missed, and the fallback for a number this build has no
+// name for.
+func TestEnumLabels(t *testing.T) {
+	for _, tc := range []struct{ got, want string }{
+		{statusLabel(1), "Open (1)"},
+		{statusLabel(4), "Executed (4)"},
+		{topicLabel(7), "SubnetManagement (7)"},
+		{topicLabel(12), "IcOsVersionDeployment (12)"},
+		{topicLabel(15), "ApiBoundaryNodeManagement (15)"},
+		{statusLabel(99), "99"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("label = %q, want %q", tc.got, tc.want)
+		}
+	}
+}
+
 func TestStatusFromGovernance(t *testing.T) {
 	tests := []struct {
 		name   string

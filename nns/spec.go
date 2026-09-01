@@ -37,6 +37,45 @@ type removeNodeProviderBody struct {
 	NodeProviderID string `hcl:"node_provider_id"`
 }
 
+// updateSubnetBody mirrors the settings update_subnet can change. Every
+// top-level field is optional and a pointer, because the registry skips an unset
+// field rather than resetting it: nil has to mean "do not touch", which a bare
+// bool or uint64 cannot express. The nested blocks are the opposite -- sending
+// one replaces the subnet's whole record, so all of their fields are required.
+type updateSubnetBody struct {
+	SubnetID string `hcl:"subnet_id"`
+
+	IsHalted             *bool     `hcl:"is_halted,optional"`
+	HaltAtCupHeight      *bool     `hcl:"halt_at_cup_height,optional"`
+	MaxNumberOfCanisters *uint64   `hcl:"max_number_of_canisters,optional"`
+	SSHReadonlyAccess    *[]string `hcl:"ssh_readonly_access,optional"`
+	SSHBackupAccess      *[]string `hcl:"ssh_backup_access,optional"`
+	SubnetAdmins         *[]string `hcl:"subnet_admins,optional"`
+
+	Features       *subnetFeaturesBody `hcl:"features,block"`
+	ResourceLimits *resourceLimitsBody `hcl:"resource_limits,block"`
+
+	UnitDelayMillis            *uint64 `hcl:"unit_delay_millis,optional"`
+	InitialNotaryDelayMillis   *uint64 `hcl:"initial_notary_delay_millis,optional"`
+	DkgIntervalLength          *uint64 `hcl:"dkg_interval_length,optional"`
+	DkgDealingsPerBlock        *uint64 `hcl:"dkg_dealings_per_block,optional"`
+	MaxIngressBytesPerMessage  *uint64 `hcl:"max_ingress_bytes_per_message,optional"`
+	MaxIngressBytesPerBlock    *uint64 `hcl:"max_ingress_bytes_per_block,optional"`
+	MaxIngressMessagesPerBlock *uint64 `hcl:"max_ingress_messages_per_block,optional"`
+	MaxBlockPayloadSize        *uint64 `hcl:"max_block_payload_size,optional"`
+}
+
+type subnetFeaturesBody struct {
+	CanisterSandboxing bool `hcl:"canister_sandboxing"`
+	HTTPRequests       bool `hcl:"http_requests"`
+	SevEnabled         bool `hcl:"sev_enabled"`
+}
+
+type resourceLimitsBody struct {
+	MaximumStateSize  uint64 `hcl:"maximum_state_size"`
+	MaximumStateDelta uint64 `hcl:"maximum_state_delta"`
+}
+
 // Spec is one `proposal "<name>" { ... }` block: common metadata plus a
 // kind-specific nested block. Single source of truth for the payload; dry-run,
 // submit, and state all derive from it.
@@ -154,86 +193,14 @@ func LoadSpec(path, name string) (*Spec, error) {
 }
 
 // Action decodes the kind-specific nested block into the concrete Action.
-// Single dispatch point: a new proposal type is a case here plus a body struct.
+// Single dispatch point: a new proposal type is one entry in the kinds table,
+// which is also where its docs and its payload renderer come from.
 func (s *Spec) Action() (Action, error) {
-	switch s.Kind {
-	case "membership":
-		var body membershipBody
-		if err := s.decodeRest(&body); err != nil {
-			return nil, err
-		}
-		subnet, err := principal.Decode(body.SubnetID)
-		if err != nil {
-			return nil, fmt.Errorf("proposal %q: subnet_id %q: %w", s.Name, body.SubnetID, err)
-		}
-		add, err := decodeNodes(body.Add)
-		if err != nil {
-			return nil, fmt.Errorf("proposal %q: %w", s.Name, err)
-		}
-		remove, err := decodeNodes(body.Remove)
-		if err != nil {
-			return nil, fmt.Errorf("proposal %q: %w", s.Name, err)
-		}
-		return MembershipProposal{
-			Meta:     s.Meta(),
-			SubnetID: subnet, NodeIDsAdd: add, NodeIDsRemove: remove,
-		}, nil
-	case "deploy_guestos":
-		var body deployGuestosBody
-		if err := s.decodeRest(&body); err != nil {
-			return nil, err
-		}
-		subnet, err := principal.Decode(body.SubnetID)
-		if err != nil {
-			return nil, fmt.Errorf("proposal %q: subnet_id %q: %w", s.Name, body.SubnetID, err)
-		}
-		if body.ReplicaVersionID == "" {
-			return nil, fmt.Errorf("proposal %q: replica_version_id is required", s.Name)
-		}
-		return DeployGuestosAction{Meta: s.Meta(), SubnetID: subnet, ReplicaVersionID: body.ReplicaVersionID}, nil
-	case "remove_nodes":
-		var body removeNodesBody
-		if err := s.decodeRest(&body); err != nil {
-			return nil, err
-		}
-		if len(body.Nodes) == 0 {
-			return nil, fmt.Errorf("proposal %q: at least one node block is required", s.Name)
-		}
-		ids, err := decodeNodes(body.Nodes)
-		if err != nil {
-			return nil, fmt.Errorf("proposal %q: %w", s.Name, err)
-		}
-		return RemoveNodesAction{Meta: s.Meta(), NodeIDs: ids}, nil
-	case "remove_node_operators":
-		var body removeNodeOperatorsBody
-		if err := s.decodeRest(&body); err != nil {
-			return nil, err
-		}
-		if len(body.Operators) == 0 {
-			return nil, fmt.Errorf("proposal %q: at least one operator is required", s.Name)
-		}
-		ids := make([]principal.Principal, len(body.Operators))
-		for i, op := range body.Operators {
-			p, err := principal.Decode(op)
-			if err != nil {
-				return nil, fmt.Errorf("proposal %q: operator id %q: %w", s.Name, op, err)
-			}
-			ids[i] = p
-		}
-		return RemoveNodeOperatorsAction{Meta: s.Meta(), OperatorIDs: ids}, nil
-	case "remove_node_provider":
-		var body removeNodeProviderBody
-		if err := s.decodeRest(&body); err != nil {
-			return nil, err
-		}
-		p, err := principal.Decode(body.NodeProviderID)
-		if err != nil {
-			return nil, fmt.Errorf("proposal %q: node_provider_id %q: %w", s.Name, body.NodeProviderID, err)
-		}
-		return RemoveNodeProviderAction{Meta: s.Meta(), ProviderID: p}, nil
-	default:
-		return nil, fmt.Errorf("proposal %q: unsupported kind %q", s.Name, s.Kind)
+	k, ok := kindByName(s.Kind)
+	if !ok {
+		return nil, fmt.Errorf("proposal %q: unsupported kind %q (known kinds: %s)", s.Name, s.Kind, kindList())
 	}
+	return k.Decode(s)
 }
 
 // decodeRest pulls the single nested block named after the spec's kind out of

@@ -59,6 +59,10 @@ Each proposal has a `kind` and a matching nested block:
 
 - `membership` — `change_subnet_membership`: add and/or remove nodes on a subnet. Adding and removing in one proposal swaps a node, leaving the subnet size unchanged.
 - `deploy_guestos` — `deploy_guestos_to_all_subnet_nodes`: upgrade every node in a subnet to a replica version.
+- `update_subnet` — `update_subnet`: change a subnet's configuration record (halt/unhalt, SSH access, canister cap, features, consensus tuning). Every field is optional and an omitted one is left untouched, but a nested block is replaced wholesale, so `features` and `resource_limits` must be stated in full.
+- `remove_nodes` — `remove_nodes`: deregister nodes, freeing their operators' allowance.
+- `remove_node_operators` — `remove_node_operators`: delete node operator records.
+- `remove_node_provider` — a native `AddOrRemoveNodeProvider` governance action rather than an `ExecuteNnsFunction`: remove a node provider.
 
 Adding a kind is a new `Action` implementation plus one decode case; state, dry-run, submit, and drift detection are kind-agnostic.
 
