@@ -19,8 +19,10 @@ command -v protoc-gen-go >/dev/null || { echo "protoc-gen-go not found; run insi
 root="$(cd "$(dirname "$0")" && pwd)"
 raw="https://raw.githubusercontent.com/dfinity/ic/${IC_RELEASE_COMMIT}"
 
-# subnet.proto (SubnetRecord, SubnetListRecord) and governance.proto (the
-# NnsFunction enum), plus their transitive imports. Each entry is
+# subnet.proto (SubnetRecord, SubnetListRecord), transport.proto (the registry
+# canister's protobuf get_value endpoint, used to mirror mainnet records into
+# the dry-run registry), and governance.proto (the NnsFunction enum), plus their
+# transitive imports. Each entry is
 # "<repo proto root> <path under it>": the protos live under several crates'
 # own proto/ dirs, and the path under each root is what imports resolve
 # against, so it doubles as the proto_path-relative name.
@@ -31,6 +33,7 @@ protos=(
   "rs/protobuf/def registry/node/v1/node.proto"
   "rs/protobuf/def registry/node_operator/v1/node_operator.proto"
   "rs/protobuf/def registry/dc/v1/dc.proto"
+  "rs/registry/transport/proto ic_registry_transport/pb/v1/transport.proto"
   "rs/protobuf/def types/v1/types.proto"
   "rs/nns/governance/proto ic_nns_governance/pb/v1/governance.proto"
   "rs/types/base_types/proto ic_base_types/pb/v1/types.proto"
@@ -53,6 +56,18 @@ for entry in "${protos[@]}"; do
     -o "$src/$p" "$raw/$prefix/$p" || { echo "fetch failed: $prefix/$p"; exit 1; }
 done
 
+# CertifiedResponse is the only thing in transport.proto that pulls in
+# mixed_hash_tree.proto, and nothing here reads certified responses. Dropping it
+# keeps the generated set free of google.protobuf.Empty, which nns/pb cannot
+# depend on: the vendored module tree is computed before nns/pb is generated, so
+# an import that appears only in generated code is unresolvable at build time.
+# The trailing comment block is part of the message, hence to end of file.
+transport="$src/ic_registry_transport/pb/v1/transport.proto"
+grep -q "message CertifiedResponse" "$transport" || { echo "CertifiedResponse gone from transport.proto; drop this edit"; exit 1; }
+sed -i.bak -e '/^import "messaging\/xnet\/v1\/mixed_hash_tree.proto";$/d' \
+  -e '/^\/\/ Message encoding a response to any \*_certified method call\.$/,$d' "$transport"
+grep -q "mixed_hash_tree" "$transport" && { echo "mixed_hash_tree still referenced in transport.proto"; exit 1; }
+
 # One Go package per proto package. The registry protos can share a package
 # (no colliding type names), but governance's imports cannot join it or each
 # other: several declare their own Tokens/Account/GovernanceError, and two are
@@ -66,6 +81,7 @@ maps=(
   "--go_opt=Mregistry/node/v1/node.proto=$mod/registry"
   "--go_opt=Mregistry/node_operator/v1/node_operator.proto=$mod/registry"
   "--go_opt=Mregistry/dc/v1/dc.proto=$mod/registry"
+  "--go_opt=Mic_registry_transport/pb/v1/transport.proto=$mod/registrytransport"
   "--go_opt=Mtypes/v1/types.proto=$mod/registry"
   "--go_opt=Mic_nns_governance/pb/v1/governance.proto=$mod/governance"
   "--go_opt=Mic_base_types/pb/v1/types.proto=$mod/basetypes"

@@ -15,6 +15,56 @@ const (
 	fxNode1  = "5ffj3-jarcq-lruhj-aemtc-sla"
 )
 
+// An explicit provider.fetch_root_key must survive host resolution. Deriving it
+// from the host alone silently re-enables the fetch an operator turned off.
+func TestResolveTargetHonorsExplicitFetchRootKey(t *testing.T) {
+	no, yes := false, true
+	for _, tc := range []struct {
+		name     string
+		provider Provider
+		flagHost string
+		wantHost string
+		wantKey  bool
+	}{
+		{"explicit false on a local host", Provider{FetchRootKey: &no}, "http://127.0.0.1:4943", "http://127.0.0.1:4943", false},
+		{"explicit true on mainnet", Provider{FetchRootKey: &yes}, MainnetHost, MainnetHost, true},
+		{"unset derives from host", Provider{}, "http://127.0.0.1:4943", "http://127.0.0.1:4943", true},
+		{"unset on mainnet", Provider{}, MainnetHost, MainnetHost, false},
+		{"flag beats provider host", Provider{Host: "http://provider.invalid"}, "http://flag.invalid", "http://flag.invalid", true},
+		{"provider host when no flag", Provider{Host: "http://provider.invalid"}, "", "http://provider.invalid", true},
+		{"mainnet when neither is set", Provider{}, "", MainnetHost, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host, key := tc.provider.ResolveTarget(tc.flagHost)
+			if host != tc.wantHost {
+				t.Errorf("host = %q, want %q", host, tc.wantHost)
+			}
+			if key != tc.wantKey {
+				t.Errorf("fetchRootKey = %t, want %t", key, tc.wantKey)
+			}
+		})
+	}
+}
+
+// The derivation `alp registry subnet` used to open-code: fetchRootKey from the
+// host alone. Kept as a test so the shortcut is not reintroduced -- it disagrees
+// with ResolveTarget exactly when an operator disabled the fetch explicitly.
+func TestHostOnlyDerivationDisagreesWithProvider(t *testing.T) {
+	no := false
+	p := Provider{FetchRootKey: &no}
+	const host = "http://127.0.0.1:4943"
+
+	hostOnly := host != MainnetHost // the old registrySubnet rule
+	_, viaProvider := p.ResolveTarget(host)
+
+	if !hostOnly {
+		t.Fatal("fixture must use a non-mainnet host for the two rules to differ")
+	}
+	if viaProvider {
+		t.Error("an explicit fetch_root_key = false must win over the host default")
+	}
+}
+
 func TestLoadSpecMatchesProposal(t *testing.T) {
 	spec, err := LoadSpec(testConfig, "membership-example")
 	if err != nil {
@@ -100,6 +150,55 @@ func TestLoadDeployGuestosSpec(t *testing.T) {
 	// A membership spec is not a deploy_guestos, and vice versa.
 	if _, err := spec.Proposal(); err == nil {
 		t.Error("expected Proposal() to reject a non-membership spec")
+	}
+}
+
+// A deploy proposal names the version the way nodes do, so a rollout does not
+// repeat the hash. This needs guestos_version in the proposal eval context,
+// which is a tier later than where resources resolve it internally.
+func TestDeployGuestosReferencesVersionResource(t *testing.T) {
+	const hash = "b6c0f508b9028382b68786cafe654ec8b32e319e"
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("resources.hcl", `
+subnet "test" {
+  id = "`+fxSubnet+`"
+}
+guestos_version "current" {
+  id      = "`+hash+`"
+  default = true
+}
+`)
+	write("proposals.hcl", `
+proposal "deploy" {
+  kind  = "deploy_guestos"
+  title = "Deploy"
+
+  deploy_guestos {
+    subnet_id          = subnet.test.id
+    replica_version_id = guestos_version.current.id
+  }
+}
+`)
+	spec, err := LoadSpec(filepath.Join(dir, "proposals.hcl"), "deploy")
+	if err != nil {
+		t.Fatalf("load spec: %v", err)
+	}
+	a, err := spec.Action()
+	if err != nil {
+		t.Fatalf("action: %v", err)
+	}
+	d, ok := a.(DeployGuestosAction)
+	if !ok {
+		t.Fatalf("action is %T, want DeployGuestosAction", a)
+	}
+	if d.ReplicaVersionID != hash {
+		t.Errorf("replica_version_id = %q, want %q", d.ReplicaVersionID, hash)
 	}
 }
 

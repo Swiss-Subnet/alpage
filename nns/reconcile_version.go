@@ -42,6 +42,10 @@ type NodeVersionRow struct {
 	// rather than a status: the node may well be running it, but no proposal
 	// could deploy it, so the declaration is stale or wrong.
 	Unelected bool
+	// From is where the expectation came from; Overridden marks a node that
+	// declares its own version while a default exists.
+	From       VersionSource
+	Overridden bool
 }
 
 // NodeVersionReconcile is the diff of declared node versions against what the
@@ -50,15 +54,20 @@ type NodeVersionReconcile struct {
 	Nodes []NodeVersionRow
 	// ElectedSource attributes the elected-version set when one was consulted.
 	ElectedSource Source
+	// Default is the guestos_version block nodes inherit from, when one is
+	// declared; reported so the table's expectations are traceable.
+	Default    GuestosVersionRes
+	HasDefault bool
 }
 
 // ReconcileNodeVersions diffs each node's declared guestos_version against the
 // version it reports. reported maps node id to what FetchNodeVersion got for it;
 // the caller does the fetching. Pure.
 //
-// Only nodes declaring a version are checked, and decommissioned nodes are
-// skipped: they are expected to be gone, so an unreachable status endpoint is
-// the correct outcome rather than something to report.
+// Only nodes with an expected version are checked (their own or the inherited
+// default), and decommissioned nodes are skipped: they are expected to be gone,
+// so an unreachable status endpoint is the correct outcome rather than
+// something to report.
 func ReconcileNodeVersions(r *Resources, reported map[string]NodeVersion) NodeVersionReconcile {
 	return ReconcileNodeVersionsElected(r, reported, ElectedVersions{})
 }
@@ -71,21 +80,23 @@ func ReconcileNodeVersionsElected(r *Resources, reported map[string]NodeVersion,
 	if elected.Known() {
 		vr.ElectedSource = elected.Source
 	}
-	for _, n := range r.Nodes {
-		if n.GuestosVersion == "" || n.Decommissioned {
-			continue
-		}
+	vr.Default, vr.HasDefault = r.DefaultVersion()
+	nodes, want := r.VersionCheckedNodes()
+	for i, n := range nodes {
+		exp := want[i]
 		got := reported[n.ID]
 		row := NodeVersionRow{
 			NodeID: n.ID, Name: n.Name,
-			Declared: n.GuestosVersion, Actual: got.Version, Err: got.Err,
-			Indirect:  got.Indirect && got.Version != "",
-			Unelected: elected.Known() && !elected.Elected(n.GuestosVersion),
+			Declared: exp.Version, Actual: got.Version, Err: got.Err,
+			Indirect:   got.Indirect && got.Version != "",
+			Unelected:  elected.Known() && !elected.Elected(exp.Version),
+			From:       exp.Source,
+			Overridden: vr.HasDefault && exp.Source == VersionFromNode,
 		}
 		switch {
 		case got.Err != "" || got.Version == "":
 			row.Status = NodeVersionUnreachable
-		case got.Version == n.GuestosVersion:
+		case got.Version == exp.Version:
 			row.Status = NodeVersionOK
 		default:
 			row.Status = NodeVersionMismatch
@@ -110,6 +121,9 @@ func (vr NodeVersionReconcile) Table() Table {
 		}
 		if row.Indirect {
 			detail += " via dashboard"
+		}
+		if row.Overridden {
+			detail += " [override]"
 		}
 		if row.Unelected {
 			detail += colorize(" NOT ELECTED", ansiRed)
@@ -136,6 +150,10 @@ func (vr NodeVersionReconcile) Render(b *strings.Builder) {
 		return
 	}
 	vr.Table().Render(b)
+	if vr.HasDefault {
+		fmt.Fprintf(b, "  expected version defaults to %s [guestos_version.%s]; rows marked [override] declare their own\n",
+			vr.Default.Describe(), vr.Default.Name)
+	}
 	indirect, unelected := false, false
 	for _, row := range vr.Nodes {
 		indirect = indirect || row.Indirect

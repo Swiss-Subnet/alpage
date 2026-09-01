@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
-	"github.com/aviate-labs/agent-go"
 	"github.com/swiss-subnet/alpage/gen/governance"
 )
 
@@ -51,8 +49,8 @@ type ProposalStatus struct {
 // governance first; if governance no longer knows the id (purged), it falls
 // back to the ICP dashboard API. Returns nil, nil when neither source has the
 // proposal (never existed / genuinely gone).
-func FetchProposalStatus(host string, fetchRootKey bool, id uint64) (*ProposalStatus, error) {
-	info, err := fetchProposalInfo(host, fetchRootKey, id)
+func FetchProposalStatus(host string, fetchRootKey bool, id uint64, opts ...FetchOption) (*ProposalStatus, error) {
+	info, err := fetchProposalInfo(host, fetchRootKey, id, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,18 +60,8 @@ func FetchProposalStatus(host string, fetchRootKey bool, id uint64) (*ProposalSt
 	return fetchDashboardStatus(id)
 }
 
-func fetchProposalInfo(host string, fetchRootKey bool, id uint64) (*governance.ProposalInfo, error) {
-	if host == "" {
-		host = MainnetHost
-	}
-	u, err := url.Parse(host)
-	if err != nil {
-		return nil, fmt.Errorf("parse host %q: %w", host, err)
-	}
-	a, err := governance.NewGovernanceAgent(GovernanceID, agent.Config{
-		ClientConfig: clientOptions(u),
-		FetchRootKey: fetchRootKey,
-	})
+func fetchProposalInfo(host string, fetchRootKey bool, id uint64, opts ...FetchOption) (*governance.ProposalInfo, error) {
+	a, err := newGovernanceAgent(host, fetchRootKey, nil, opts)
 	if err != nil {
 		return nil, fmt.Errorf("new governance agent: %w", err)
 	}

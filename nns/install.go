@@ -46,6 +46,23 @@ func BringUpWithSubnets(c *pocketic.Client, inst int, controller, hotkey princip
 // provider/operator/dc records, so get_node_operators_and_dcs_of_node_provider
 // resolves for tests.
 func BringUpWithSubnetsAndProviders(c *pocketic.Client, inst int, controller, hotkey principal.Principal, seeds []SubnetSeed, providers []ProviderSeed) (*NNS, error) {
+	return BringUpWith(c, inst, controller, BringUpOptions{Hotkey: hotkey, Subnets: seeds, Providers: providers})
+}
+
+// BringUpOptions is the full set of dry-run state knobs. Mirror carries records
+// copied verbatim from a live IC (see mirror.go); the fabricated seeds and the
+// mirror coexist, so a mirrored application subnet can rely on a seeded system
+// subnet to satisfy the init invariants.
+type BringUpOptions struct {
+	Hotkey    principal.Principal
+	Subnets   []SubnetSeed
+	Providers []ProviderSeed
+	Mirror    *Mirror
+}
+
+// BringUpWith is the full bring-up the other entry points delegate to.
+func BringUpWith(c *pocketic.Client, inst int, controller principal.Principal, opts BringUpOptions) (*NNS, error) {
+	hotkey, seeds, providers := opts.Hotkey, opts.Subnets, opts.Providers
 	w, err := wasmPathsFromEnv()
 	if err != nil {
 		return nil, err
@@ -60,7 +77,7 @@ func BringUpWithSubnetsAndProviders(c *pocketic.Client, inst int, controller, ho
 	if err != nil {
 		return nil, fmt.Errorf("encode governance init: %w", err)
 	}
-	regArg, members, err := minimalRegistryInit(seeds, providers)
+	regArg, members, err := minimalRegistryInit(seeds, providers, opts.Mirror)
 	if err != nil {
 		return nil, fmt.Errorf("encode registry init: %w", err)
 	}
@@ -115,8 +132,13 @@ type registryMutation struct {
 	Value        []byte `ic:"value" json:"value"`
 }
 
-func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed) ([]byte, map[string][]principal.Principal, error) {
-	muts, members, err := seedMutations(seeds)
+func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed, mirror *Mirror) ([]byte, map[string][]principal.Principal, error) {
+	var mirroredSubnets []principal.Principal
+	var mirroredVersions []string
+	if mirror != nil {
+		mirroredSubnets, mirroredVersions = mirror.subnets, mirror.versions
+	}
+	muts, members, err := seedMutations(seeds, mirroredSubnets, mirroredVersions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -125,12 +147,34 @@ func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed) ([]byte, 
 		return nil, nil, err
 	}
 	muts = append(muts, provMuts...)
+	if mirror != nil {
+		// Mirror last, and it wins: a real record and a fabricated one for the
+		// same key would be two INSERTs, which the registry rejects, and the
+		// real one is the point of mirroring.
+		muts = append(mirrorPrecedence(muts, mirror.mutations), mirror.mutations...)
+	}
 	reqs := []registryMutateRequest{}
 	if len(muts) > 0 {
 		reqs = append(reqs, registryMutateRequest{Preconditions: []registryPrecondition{}, Mutations: muts})
 	}
 	blob, err := candid.Marshal([]any{registryInitPayload{Mutations: reqs}})
 	return blob, members, err
+}
+
+// mirrorPrecedence drops the seeded mutations whose key the mirror also
+// supplies.
+func mirrorPrecedence(seeded, mirrored []registryMutation) []registryMutation {
+	real := make(map[string]bool, len(mirrored))
+	for _, m := range mirrored {
+		real[string(m.Key)] = true
+	}
+	out := seeded[:0]
+	for _, m := range seeded {
+		if !real[string(m.Key)] {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // ProposerNeuronID is the id of the neuron pre-seeded at genesis for submitting

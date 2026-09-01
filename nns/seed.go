@@ -96,8 +96,11 @@ func seedProviderMutations(seeds []ProviderSeed) ([]registryMutation, error) {
 // So a compliant seed needs, for the whole set: subnet_list, an elected+blessed
 // replica version, and for one subnet marked System a consistent
 // threshold-pubkey + CUP pair (see seedCryptoRecords).
-func seedMutations(seeds []SubnetSeed) ([]registryMutation, map[string][]principal.Principal, error) {
-	if len(seeds) == 0 {
+// extraSubnets and extraVersions are the mirrored subnets and replica versions:
+// subnet_list and blessed_replica_versions are single keys, so a mirror has to
+// merge into them rather than write a second copy.
+func seedMutations(seeds []SubnetSeed, extraSubnets []principal.Principal, extraVersions []string) ([]registryMutation, map[string][]principal.Principal, error) {
+	if len(seeds) == 0 && len(extraSubnets) == 0 && len(extraVersions) == 0 {
 		return nil, nil, nil
 	}
 	var muts []registryMutation
@@ -148,6 +151,21 @@ func seedMutations(seeds []SubnetSeed) ([]registryMutation, map[string][]princip
 		muts = append(muts, crypto...)
 	}
 
+	// A mirrored subnet can be one the seeds fabricated too: every mirror rides
+	// along with the seeded system subnet, and a proposal may target that same
+	// subnet. Its record is the mirror's (see mirrorPrecedence), and subnet_list
+	// must name it once either way.
+	listed := make(map[string]bool, len(list.Subnets))
+	for _, raw := range list.Subnets {
+		listed[string(raw)] = true
+	}
+	for _, sn := range extraSubnets {
+		if listed[string(sn.Raw)] {
+			continue
+		}
+		listed[string(sn.Raw)] = true
+		list.Subnets = append(list.Subnets, sn.Raw)
+	}
 	listBlob, err := proto.Marshal(&list)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal subnet_list: %w", err)
@@ -158,7 +176,7 @@ func seedMutations(seeds []SubnetSeed) ([]registryMutation, map[string][]princip
 		Value:        listBlob,
 	})
 
-	verMuts, err := seedReplicaVersions(versions)
+	verMuts, err := seedReplicaVersions(versions, extraVersions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -266,10 +284,28 @@ func uniqueBytes(salt *int) []byte {
 // seedReplicaVersions elects every version in use (empty ReplicaVersionRecord,
 // which the invariant accepts because release_package_urls is empty) and
 // blesses them, satisfying check_replica_version_invariants.
-func seedReplicaVersions(versions map[string]bool) ([]registryMutation, error) {
+//
+// blessOnly names versions whose replica_version_ record is already mirrored
+// from mainnet: they need blessing, but writing the record again would be a
+// second INSERT on one key, which the registry rejects.
+func seedReplicaVersions(versions map[string]bool, blessOnly []string) ([]registryMutation, error) {
 	var muts []registryMutation
 	var blessed registrypb.BlessedReplicaVersions
+	mirrored := make(map[string]bool, len(blessOnly))
+	for _, v := range blessOnly {
+		if mirrored[v] {
+			continue
+		}
+		mirrored[v] = true
+		blessed.BlessedVersionIds = append(blessed.BlessedVersionIds, v)
+	}
 	for v := range versions {
+		// A seed running a mirrored version needs neither: the record comes from
+		// the mirror and it is blessed above. Writing either again would be a
+		// second entry on one key.
+		if mirrored[v] {
+			continue
+		}
 		rec, err := proto.Marshal(&registrypb.ReplicaVersionRecord{})
 		if err != nil {
 			return nil, fmt.Errorf("marshal replica_version %s: %w", v, err)

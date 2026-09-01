@@ -26,12 +26,9 @@ func clientOptions(u *url.URL) []agent.ClientOption {
 	}
 }
 
-// FetchNodeProviders returns the node providers governance has registered, as
-// textual principals. Read-only query, no identity. This is the list
-// AddOrRemoveNodeProvider::ToRemove validates against, and the registry's
-// provider queries are NOT a substitute: a provider whose nodes and operators
-// are already removed still has a governance record.
-func FetchNodeProviders(host string, fetchRootKey bool, opts ...FetchOption) ([]string, error) {
+// newGovernanceAgent builds a governance agent for host, defaulting to mainnet.
+// id may be nil for the read-only queries, which need no signature.
+func newGovernanceAgent(host string, fetchRootKey bool, id *Identity, opts []FetchOption) (*governance.GovernanceAgent, error) {
 	if host == "" {
 		host = MainnetHost
 	}
@@ -43,11 +40,24 @@ func FetchNodeProviders(host string, fetchRootKey bool, opts ...FetchOption) ([]
 	for _, opt := range opts {
 		opt(&o)
 	}
-	a, err := governance.NewGovernanceAgent(GovernanceID, agent.Config{
+	cfg := agent.Config{
 		ClientConfig:                   clientOptions(u),
 		FetchRootKey:                   fetchRootKey,
 		DisableSignedQueryVerification: o.disableQueryVerify,
-	})
+	}
+	if id != nil {
+		cfg.Identity = id.id
+	}
+	return governance.NewGovernanceAgent(GovernanceID, cfg)
+}
+
+// FetchNodeProviders returns the node providers governance has registered, as
+// textual principals. Read-only query, no identity. This is the list
+// AddOrRemoveNodeProvider::ToRemove validates against, and the registry's
+// provider queries are NOT a substitute: a provider whose nodes and operators
+// are already removed still has a governance record.
+func FetchNodeProviders(host string, fetchRootKey bool, opts ...FetchOption) ([]string, error) {
+	a, err := newGovernanceAgent(host, fetchRootKey, nil, opts)
 	if err != nil {
 		return nil, fmt.Errorf("new governance agent: %w", err)
 	}

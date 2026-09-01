@@ -38,6 +38,15 @@ func (r RemoveNodesAction) ProposalAction() (*governance.ProposalActionRequest, 
 	return execNnsAction(r)
 }
 
+// MirrorScope mirrors the nodes and, through them, their operators: removal
+// credits the allowance back to the operator record, so an absent operator
+// traps. The subnets are deliberately not mirrored -- a node still in a subnet
+// is Preflight's check, and mirroring one here would make every removal of a
+// current member trap locally.
+func (r RemoveNodesAction) MirrorScope() MirrorScope {
+	return MirrorScope{Nodes: r.NodeIDs}
+}
+
 // Preflight checks the precondition do_remove_nodes enforces by panicking: a
 // node still in a subnet fails execution after the NNS has already adopted the
 // proposal. Membership is read per declared subnet, since the registry has no
@@ -115,6 +124,14 @@ func (r RemoveNodeOperatorsAction) PayloadBlob() ([]byte, error) {
 
 func (r RemoveNodeOperatorsAction) ProposalAction() (*governance.ProposalActionRequest, error) {
 	return execNnsAction(r)
+}
+
+// MirrorScope mirrors the operator records the payload names. Their nodes are
+// not mirrored: the registry has no operator->node index to walk, so whether an
+// operator still owns nodes (which makes the removal a silent no-op) stays
+// Preflight's job via the explorer.
+func (r RemoveNodeOperatorsAction) MirrorScope() MirrorScope {
+	return MirrorScope{Operators: r.OperatorIDs}
 }
 
 func (r RemoveNodeOperatorsAction) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {

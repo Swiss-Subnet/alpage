@@ -95,9 +95,9 @@ func newRegistryAgent(host string, fetchRootKey bool, opts []FetchOption) (*regi
 	})
 }
 
-// FetchSubnetMembership returns a subnet's node ids as sorted textual
-// principals. Read-only query: no identity, host defaults to mainnet.
-func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) ([]string, error) {
+// getSubnetRecord runs get_subnet and unwraps the Ok arm, so the callers that
+// only differ in which field they read do not each repeat the error ladder.
+func getSubnetRecord(host string, fetchRootKey bool, subnetID principal.Principal, opts []FetchOption) (*registry.SubnetRecord, error) {
 	a, err := newRegistryAgent(host, fetchRootKey, opts)
 	if err != nil {
 		return nil, fmt.Errorf("new registry agent: %w", err)
@@ -112,35 +112,35 @@ func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Pr
 	if resp.Ok == nil {
 		return nil, fmt.Errorf("get_subnet: empty response")
 	}
-	return decodeMembership(resp.Ok.Membership), nil
+	return resp.Ok, nil
+}
+
+// FetchSubnetMembership returns a subnet's node ids as sorted textual
+// principals. Read-only query: no identity, host defaults to mainnet.
+func FetchSubnetMembership(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) ([]string, error) {
+	rec, err := getSubnetRecord(host, fetchRootKey, subnetID, opts)
+	if err != nil {
+		return nil, err
+	}
+	return decodeMembership(rec.Membership), nil
 }
 
 // FetchSubnetRecordFacts returns the subnet record fields reconcile compares
 // against: type, cost schedule, and admins. Read-only.
 func FetchSubnetRecordFacts(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (SubnetRecordFacts, error) {
-	a, err := newRegistryAgent(host, fetchRootKey, opts)
+	rec, err := getSubnetRecord(host, fetchRootKey, subnetID, opts)
 	if err != nil {
-		return SubnetRecordFacts{}, fmt.Errorf("new registry agent: %w", err)
+		return SubnetRecordFacts{}, err
 	}
-	resp, err := a.GetSubnet(registry.GetSubnetRequest{SubnetId: &subnetID})
-	if err != nil {
-		return SubnetRecordFacts{}, fmt.Errorf("get_subnet: %w", err)
-	}
-	if resp.Err != nil {
-		return SubnetRecordFacts{}, fmt.Errorf("registry rejected get_subnet: %s", *resp.Err)
-	}
-	if resp.Ok == nil {
-		return SubnetRecordFacts{}, fmt.Errorf("get_subnet: empty response")
-	}
-	admins := make([]string, 0, len(resp.Ok.SubnetAdmins))
-	for _, p := range resp.Ok.SubnetAdmins {
+	admins := make([]string, 0, len(rec.SubnetAdmins))
+	for _, p := range rec.SubnetAdmins {
 		admins = append(admins, p.Encode())
 	}
 	return SubnetRecordFacts{
-		Type:         candidSubnetTypeName(resp.Ok.SubnetType),
-		CostSchedule: candidCostScheduleName(resp.Ok.CanisterCyclesCostSchedule),
+		Type:         candidSubnetTypeName(rec.SubnetType),
+		CostSchedule: candidCostScheduleName(rec.CanisterCyclesCostSchedule),
 		Admins:       admins,
-		Features:     SubnetFeatures{SevEnabled: resp.Ok.Features.SevEnabled},
+		Features:     SubnetFeatures{SevEnabled: rec.Features.SevEnabled},
 	}, nil
 }
 
@@ -174,21 +174,11 @@ func candidCostScheduleName(s registry.CanisterCyclesCostSchedule) string {
 // FetchSubnetReplicaVersion returns a subnet's current GuestOS/replica version
 // id from the registry. Read-only.
 func FetchSubnetReplicaVersion(host string, fetchRootKey bool, subnetID principal.Principal, opts ...FetchOption) (string, error) {
-	a, err := newRegistryAgent(host, fetchRootKey, opts)
+	rec, err := getSubnetRecord(host, fetchRootKey, subnetID, opts)
 	if err != nil {
-		return "", fmt.Errorf("new registry agent: %w", err)
+		return "", err
 	}
-	resp, err := a.GetSubnet(registry.GetSubnetRequest{SubnetId: &subnetID})
-	if err != nil {
-		return "", fmt.Errorf("get_subnet: %w", err)
-	}
-	if resp.Err != nil {
-		return "", fmt.Errorf("registry rejected get_subnet: %s", *resp.Err)
-	}
-	if resp.Ok == nil {
-		return "", fmt.Errorf("get_subnet: empty response")
-	}
-	return resp.Ok.ReplicaVersionId, nil
+	return rec.ReplicaVersionId, nil
 }
 
 // ProviderOperator is one (operator, data center) pair owned by a node

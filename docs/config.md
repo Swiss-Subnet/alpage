@@ -55,12 +55,13 @@ This page documents the current development schema, ahead of the latest release.
 
 ### `guestos_version "<name>" { }`
 
-<span class="since" title="Introduced in v0.3.0">v0.3.0</span> A named GuestOS/replica version, referenced by node as `guestos_version.<name>.id`.
+<span class="since" title="Introduced in v0.3.0">v0.3.0</span> A named GuestOS/replica version, referenced by node and by deploy_guestos as `guestos_version.<name>.id`. `alp guestos sync` generates the elected set as resources/guestos.hcl.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
 | `id` | attr | yes | <span class="since" title="Introduced in v0.3.0">v0.3.0</span> | GuestOS/replica version hash. Spelled id, not hash, so it resolves through the same `<kind>.<name>.id` form as every other resource. |
 | `label` | attr | no | <span class="since" title="Introduced in v0.3.0">v0.3.0</span> | Human-readable name (e.g. the release name). |
+| `default` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Marks the version every node is expected to run unless its own block overrides it, so a fleet-wide rollout is one edit here rather than one per node. At most one guestos_version may carry it; two is a load error. With a default declared, a node omitting guestos_version inherits it instead of going unchecked, so `guestos_version = "none"` is how a single node opts out. |
 
 ### `node "<name>" { }`
 
@@ -73,7 +74,7 @@ This page documents the current development schema, ahead of the latest release.
 | `subnet` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Id of the subnet it belongs to (`subnet.<name>.id`). Empty means unassigned. |
 | `operator` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Id of its node operator (`node_operator.<name>.id`). |
 | `decommissioned` | attr | no | <span class="since" title="Introduced in v0.1.1">v0.1.1</span> | Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. |
-| `guestos_version` | attr | no | <span class="since" title="Introduced in v0.2.0">v0.2.0</span> | GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row "via dashboard" since that data may lag. Reconcile also checks the declared version against the NNS elected set and marks it "NOT ELECTED" if absent; when that source is unreadable the check is skipped rather than failing. Omitted means unchecked. |
+| `guestos_version` | attr | no | <span class="since" title="Introduced in v0.2.0">v0.2.0</span> | GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row "via dashboard" since that data may lag. Reconcile also checks the version against the NNS elected set and marks it "NOT ELECTED" if absent; when that source is unreadable the check is skipped rather than failing. Omitted inherits the guestos_version marked default, and means unchecked when there is none; setting it while a default exists marks the row "[override]". "none" opts the node out of the check entirely. |
 | `chip_id` | attr | no | <span class="since" title="Introduced in v0.4.0">v0.4.0</span> | The node's AMD SEV-SNP CHIP_ID as hex, the form AMD's KDS takes as its hwID parameter (base64 is also accepted; comparison is on the decoded bytes). 64 opaque bytes identifying the physical CPU, recorded by the registry canister only for a node onboarded with SEV. Pins hardware identity, not live TEE state. Reconcile also asks AMD KDS to vouch for the chip, caching the verdict in state.json. Omitted asserts the node carries none, so gaining, losing, or changing one is drift; an unread record reports "unknown". |
 
 ## `proposals.hcl`
@@ -116,7 +117,7 @@ This page documents the current development schema, ahead of the latest release.
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
 | `subnet_id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Subnet whose nodes to upgrade (`subnet.<name>.id`). |
-| `replica_version_id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Replica version to deploy to every node in the subnet. Must be elected by the NNS: preflight checks the registry for a `replica_version_<id>` record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. `--force` submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable. |
+| `replica_version_id` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Replica version to deploy to every node in the subnet (`guestos_version.<name>.id`, or the hash itself). Must be elected by the NNS: preflight checks the registry for a `replica_version_<id>` record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. `--force` submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable. |
 
 ### `add / remove { }`
 

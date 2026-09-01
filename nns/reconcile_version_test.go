@@ -377,6 +377,50 @@ func TestNoDashboardNoteWhenAllDirect(t *testing.T) {
 	}
 }
 
+// An inherited expectation is reconciled like a declared one, and the report
+// says where it came from: the default, plus which rows overrode it.
+func TestReconcileVersionsInheritsDefault(t *testing.T) {
+	r := &Resources{
+		Versions: []GuestosVersionRes{{Name: "current", ID: verA, Label: "release-current", Default: true}},
+		Nodes: []NodeRes{
+			{Name: "inherits", ID: "n-inherit"},
+			{Name: "overrides", ID: "n-override", GuestosVersion: verB},
+			{Name: "optedout", ID: "n-out", GuestosVersion: GuestosVersionNone},
+		},
+		labels: map[string]string{},
+	}
+	vr := ReconcileNodeVersions(r, map[string]NodeVersion{
+		"n-inherit":  {Version: verA},
+		"n-override": {Version: verB},
+		"n-out":      {Version: verB},
+	})
+	if len(vr.Nodes) != 2 {
+		t.Fatalf("checked %d nodes, want 2 (the opted-out node is skipped): %+v", len(vr.Nodes), vr.Nodes)
+	}
+	for _, row := range vr.Nodes {
+		if row.Status != NodeVersionOK {
+			t.Errorf("%s: status = %s, want ok", row.NodeID, row.Status)
+		}
+		switch row.NodeID {
+		case "n-inherit":
+			if row.From != VersionFromDefault || row.Overridden {
+				t.Errorf("inherited row = %+v, want from default and not overridden", row)
+			}
+		case "n-override":
+			if row.From != VersionFromNode || !row.Overridden {
+				t.Errorf("overriding row = %+v, want from node and overridden", row)
+			}
+		}
+	}
+	var b strings.Builder
+	vr.Render(&b)
+	for _, want := range []string{"defaults to release-current", "guestos_version.current", "[override]"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("report missing %q:\n%s", want, b.String())
+		}
+	}
+}
+
 // The boundary node blanks impl_version (handlers.rs sets it to None), so an
 // absent field must be a clear error rather than an empty-string "match".
 func TestFetchNodeVersionAbsentImplVersion(t *testing.T) {

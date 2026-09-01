@@ -10,7 +10,7 @@ The CLI is `alp`, built from `cmd/alp`.
 
 - **Config** you declare: `proposals.hcl` (one `proposal "<name>"` block per change) and `resources.hcl` (reusable `node` / `subnet` resources, referenced as `node.<name>.id` / `subnet.<name>.id`). Every block and field is documented in [docs/config.md](docs/config.md), generated from the struct tags via `go generate ./nns`. Split resource files: any `resources/*.hcl` beside `resources.hcl` is merged in, so cross-file references resolve.
 - **State** the tool records: `state.json`, a single file keyed by proposal name, holding the resulting `proposal_id`, the submitter principal, neuron, host, payload hash, and timestamp.
-- **Verification**: `apply` always dry-runs the exact payload on a local PocketIC NNS first. It refuses to resubmit a proposal already recorded in state unless `--force`.
+- **Verification**: `apply` always dry-runs the exact payload on a local PocketIC NNS first. The local registry is seeded with the real records the payload names, copied from the live network at one pinned registry version, so the proposal executes against the same entities mainnet will resolve rather than against empty state. It refuses to resubmit a proposal already recorded in state unless `--force`.
 
 ## Usage
 
@@ -21,6 +21,7 @@ alp list
 alp status [--host url]
 alp reconcile [--host url]
 alp registry subnet <subnet_id> [--host url]
+alp guestos sync [--set alias] [--variant base] [--out path]
 ```
 
 - `apply` — check the `--identity` can submit from the neuron (fails fast on a wrong key), dry-run on PocketIC, then submit to the live network with `--yes` (type `submit` to confirm), then write state.
@@ -28,6 +29,7 @@ alp registry subnet <subnet_id> [--host url]
 - `list` — show each declared proposal as in-sync, drifted, or not-submitted. Here "drift" means the committed config's payload no longer matches the payload recorded in state (an edit since submit); it does not reconcile against on-chain state.
 - `status` — read each recorded proposal back from live governance and show its actual on-chain status (open/adopted/rejected/executed/failed) with the current tally. This is the on-chain counterpart to `list`: `list` compares config against state, `status` compares state against the network. Governance purges older proposals; when a recorded id is no longer in governance, `status` falls back to the read-only ICP dashboard API and marks the line `[via ICP dashboard; purged from governance]`. A proposal in neither source is reported as unknown. Read-only.
 - `reconcile` — read-only diff of `resources.hcl` against live on-chain state: nodes vs subnet membership (`in-sync`/`missing`/`deregistered`/`unmanaged`), `node_operator`s vs their provider's on-chain ownership, and each node's declared operator vs its on-chain owner (an operator-owned node missing from `resources.hcl` is reported `unmanaged`). Exits nonzero on drift, so it works as a CI gate. Status fields are colorized on a TTY (honors `NO_COLOR`).
+- `guestos sync` — regenerate `resources/guestos.hcl`, the catalogue of GuestOS versions the NNS currently has elected, so a new release never has to be transcribed by hand. The elected set is replayed from the dashboard's election proposals (elections and the unelections they carry). `--set <alias>` also repoints an existing `guestos_version` block at the newest elected release, editing it in place so its comments and its `default` marker survive and the new hash lands in the diff. `--variant` picks the release flavour (default `base`), since DFINITY elects several per release.
 - `registry subnet` — read-only query of the registry canister for a subnet's current node membership, emitted as a `resources.hcl` fragment (a `subnet` block plus one `node` block per member, sorted by id). Use it to seed or reconcile `resources.hcl` against on-chain state.
 
 For example, the current membership of the Swiss subnet (truncated):

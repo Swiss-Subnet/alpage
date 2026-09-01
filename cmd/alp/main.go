@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -79,13 +80,15 @@ func run() error {
 		return reconcile(os.Args[2:])
 	case "registry":
 		return registryCmd(os.Args[2:])
+	case "guestos":
+		return guestosCmd(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println(buildVersion())
 		return nil
 	case "-h", "--help", "help":
 		return usage()
 	default:
-		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, reconcile, registry, version)", os.Args[1])
+		return fmt.Errorf("unknown subcommand %q (try: apply, plan, import, list, status, reconcile, registry, guestos, version)", os.Args[1])
 	}
 }
 
@@ -97,7 +100,8 @@ func usage() error {
   alp list
   alp status [--host url] [--no-record]
   alp reconcile [--host url]
-  alp registry subnet <subnet_id> [--host url]
+  alp registry subnet <subnet_id> [--host url] [--config path]
+  alp guestos sync [--set alias] [--variant base] [--out path]
   alp version`)
 	return nil
 }
@@ -144,8 +148,8 @@ func apply(argv []string) error {
 	if err != nil {
 		return err
 	}
-	effHost, effNeuron := resolveHost(cfg.Provider, *host), resolveNeuron(cfg.Provider, *neuronID)
-	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	effHost, fetchRootKey := cfg.Provider.ResolveTarget(*host)
+	effNeuron := resolveNeuron(cfg.Provider, *neuronID)
 
 	st, err := nns.LoadState(*statePath)
 	if err != nil {
@@ -295,7 +299,8 @@ func registryCmd(argv []string) error {
 
 func registrySubnet(argv []string) error {
 	fs := flag.NewFlagSet("registry subnet", flag.ContinueOnError)
-	host := fs.String("host", nns.MainnetHost, "IC host to query")
+	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
+	host := fs.String("host", "", "IC host to query (overrides provider block)")
 	pos, rest := splitArgs(argv, 1)
 	if err := fs.Parse(rest); err != nil {
 		return err
@@ -307,12 +312,74 @@ func registrySubnet(argv []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid subnet id %q: %w", pos[0], err)
 	}
-	fetchRootKey := *host != nns.MainnetHost
-	nodes, err := nns.FetchSubnetMembership(*host, fetchRootKey, subnetID)
+	// A missing config is not fatal here: this command is useful for bootstrapping
+	// a resources.hcl before any config exists.
+	var provider nns.Provider
+	if cfg, err := nns.LoadConfig(*config); err == nil {
+		provider = cfg.Provider
+	}
+	effHost, fetchRootKey := provider.ResolveTarget(*host)
+	nodes, err := nns.FetchSubnetMembership(effHost, fetchRootKey, subnetID)
 	if err != nil {
 		return err
 	}
 	fmt.Print(nns.RenderResourcesHCL(subnetID.Encode(), nodes))
+	return nil
+}
+
+// guestosCmd groups the GuestOS version catalogue commands.
+func guestosCmd(argv []string) error {
+	if len(argv) < 1 {
+		return fmt.Errorf("guestos: usage: guestos sync [--set alias] [--variant base] [--out path]")
+	}
+	switch argv[0] {
+	case "sync":
+		return guestosSync(argv[1:])
+	default:
+		return fmt.Errorf("unknown guestos command %q (try: sync)", argv[0])
+	}
+}
+
+// guestosSync regenerates the elected-version catalogue and, with --set,
+// repoints an alias block at the newest release. Both write files rather than
+// submitting anything: the diff is the review.
+func guestosSync(argv []string) error {
+	fs := flag.NewFlagSet("guestos sync", flag.ContinueOnError)
+	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
+	out := fs.String("out", "", "path for the generated catalogue (default resources/guestos.hcl beside resources.hcl)")
+	set := fs.String("set", "", "guestos_version block to repoint at the newest elected release")
+	variant := fs.String("variant", nns.DefaultReleaseVariant, "release variant --set selects (e.g. base)")
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+	releases, err := nns.FetchElectedReleases(nns.DashboardAPI)
+	if err != nil {
+		return err
+	}
+	if len(releases) == 0 {
+		return fmt.Errorf("no elected releases found; refusing to write an empty catalogue")
+	}
+	dir := filepath.Dir(*config)
+	catalogue := *out
+	if catalogue == "" {
+		catalogue = filepath.Join(dir, nns.DefaultGuestosPath)
+	}
+	if err := nns.WriteGuestosHCL(catalogue, releases); err != nil {
+		return err
+	}
+	fmt.Printf("wrote %d elected version(s) to %s [via %s]\n", len(releases), catalogue, nns.SourceDashboard)
+	if *set == "" {
+		return nil
+	}
+	latest, err := nns.LatestRelease(releases, *variant)
+	if err != nil {
+		return err
+	}
+	path, err := nns.SetVersionAlias(filepath.Join(dir, nns.DefaultResourcesPath), *set, latest)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("repointed guestos_version %q at %s (%s) in %s\n", *set, latest.Name, latest.VersionID, path)
 	return nil
 }
 
@@ -398,8 +465,7 @@ func plan(argv []string) error {
 	if err != nil {
 		return err
 	}
-	effHost := resolveHost(cfg.Provider, *host)
-	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	effHost, fetchRootKey := cfg.Provider.ResolveTarget(*host)
 	// plan only reports, so it degrades rather than failing when a source is
 	// unreadable: the warning is more useful than no plan at all.
 	pf, err := action.Preflight(effHost, fetchRootKey, nns.AllowUnverifiedElection())
@@ -440,8 +506,7 @@ func status(argv []string) error {
 	if err != nil {
 		return err
 	}
-	effHost := resolveHost(cfg.Provider, *host)
-	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	effHost, fetchRootKey := cfg.Provider.ResolveTarget(*host)
 	changed := false
 	for _, s := range cfg.Proposals {
 		entry, ok := st.Proposals[s.Name]
@@ -487,8 +552,7 @@ func reconcile(argv []string) error {
 		return err
 	}
 	nns.Color = nns.DetectColor()
-	effHost := resolveHost(cfg.Provider, *host)
-	fetchRootKey := cfg.Provider.ShouldFetchRootKey(effHost)
+	effHost, fetchRootKey := cfg.Provider.ResolveTarget(*host)
 	if len(cfg.Resources.Subnets) == 0 && len(cfg.Resources.Providers) == 0 && len(cfg.Resources.Nodes) == 0 && !anyDeclaredVersion(cfg.Resources) {
 		fmt.Println("no subnet, node, or node_provider resources declared in resources.hcl")
 		return nil
@@ -711,14 +775,13 @@ func fetchNodeStatus(ids []string) (map[string]nns.NodeStatus, error) {
 // (flagging nothing) rather than failing: reconcile is a read-only report and
 // should still work when the explorer is down. The reason is noted on stderr.
 func electedVersions(r *nns.Resources) nns.ElectedVersions {
-	if !anyDeclaredVersion(r) {
+	_, want := r.VersionCheckedNodes()
+	if len(want) == 0 {
 		return nns.ElectedVersions{}
 	}
-	var declared []string
-	for _, n := range r.Nodes {
-		if n.GuestosVersion != "" && !n.Decommissioned {
-			declared = append(declared, n.GuestosVersion)
-		}
+	declared := make([]string, 0, len(want))
+	for _, e := range want {
+		declared = append(declared, e.Version)
 	}
 	el, err := nns.FetchElectedVersions(nns.DefaultRegistryExplorer, declared...)
 	if err != nil {
@@ -729,12 +792,8 @@ func electedVersions(r *nns.Resources) nns.ElectedVersions {
 }
 
 func anyDeclaredVersion(r *nns.Resources) bool {
-	for _, n := range r.Nodes {
-		if n.GuestosVersion != "" && !n.Decommissioned {
-			return true
-		}
-	}
-	return false
+	nodes, _ := r.VersionCheckedNodes()
+	return len(nodes) > 0
 }
 
 // nodeVersions reads the version each node declaring guestos_version reports
@@ -746,12 +805,7 @@ func anyDeclaredVersion(r *nns.Resources) bool {
 // reported as unreachable, not treated as a fatal error. Reaching replicas needs
 // IPv6; without it every node reports unreachable.
 func nodeVersions(r *nns.Resources) map[string]nns.NodeVersion {
-	var want []nns.NodeRes
-	for _, n := range r.Nodes {
-		if n.GuestosVersion != "" && !n.Decommissioned {
-			want = append(want, n)
-		}
-	}
+	want, _ := r.VersionCheckedNodes()
 	if len(want) == 0 {
 		return nil
 	}
@@ -815,17 +869,6 @@ func findSpec(cfg *nns.Config, name string) (*nns.Spec, error) {
 		}
 	}
 	return nil, fmt.Errorf("proposal %q not found", name)
-}
-
-// resolveHost applies precedence: CLI flag > provider block > built-in default.
-func resolveHost(p nns.Provider, flagHost string) string {
-	if flagHost != "" {
-		return flagHost
-	}
-	if p.Host != "" {
-		return p.Host
-	}
-	return nns.MainnetHost
 }
 
 // resolveNeuron applies precedence: CLI flag > provider block > built-in default.
@@ -892,6 +935,33 @@ func dryRunProviderSeeds(action nns.Action, host string, fetchRootKey bool) ([]n
 	return provSeeds, subnetSeeds, nil
 }
 
+// dryRunMirror copies the registry records the action's payload dereferences
+// out of the live network, so the local execution resolves the same entities
+// mainnet will. A kind that declares no scope keeps the fabricated seed.
+//
+// The fabricated system subnet rides along: the registry's init invariants
+// require one, and every subnet a proposal targets is an application subnet.
+func dryRunMirror(action nns.Action, host string, fetchRootKey bool) (*nns.Mirror, []nns.SubnetSeed, error) {
+	scoper, ok := action.(nns.MirrorScoper)
+	if !ok {
+		return nil, nil, nil
+	}
+	scope := scoper.MirrorScope()
+	if scope.Empty() {
+		return nil, nil, nil
+	}
+	fmt.Fprintln(os.Stderr, "mirroring mainnet registry records for the dry-run...")
+	mirror, err := nns.FetchMirror(host, fetchRootKey, scope)
+	if err != nil {
+		return nil, nil, fmt.Errorf("mirror mainnet registry: %w", err)
+	}
+	sys, err := nns.SystemSubnetSeed()
+	if err != nil {
+		return nil, nil, err
+	}
+	return mirror, []nns.SubnetSeed{sys}, nil
+}
+
 // dryRun brings up a local NNS, submits the exact same action, and prints the
 // decoded result. Any error here aborts the real submission.
 func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) error {
@@ -903,6 +973,11 @@ func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) err
 	if err != nil {
 		return err
 	}
+	mirror, mirrorSeeds, err := dryRunMirror(action, host, fetchRootKey)
+	if err != nil {
+		return err
+	}
+	subnetSeeds = append(subnetSeeds, mirrorSeeds...)
 	c, err := pocketic.Start(art.PocketIC)
 	if err != nil {
 		return err
@@ -916,7 +991,11 @@ func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) err
 	if err != nil {
 		return err
 	}
-	n, err := nns.BringUpWithSubnetsAndProviders(c, inst, local.Principal(), principal.Principal{}, subnetSeeds, provSeeds)
+	n, err := nns.BringUpWith(c, inst, local.Principal(), nns.BringUpOptions{
+		Subnets:   subnetSeeds,
+		Providers: provSeeds,
+		Mirror:    mirror,
+	})
 	if err != nil {
 		return err
 	}

@@ -131,6 +131,16 @@ func (r MembershipProposal) ProposalAction() (*governance.ProposalActionRequest,
 	return execNnsAction(r)
 }
 
+// MirrorScope mirrors the target subnet, which drags in its current members,
+// plus the incoming nodes: do_change_subnet_membership dereferences every node
+// id in the payload, and the outgoing ones are already members.
+func (r MembershipProposal) MirrorScope() MirrorScope {
+	return MirrorScope{
+		Subnets: []principal.Principal{r.SubnetID},
+		Nodes:   append(append([]principal.Principal(nil), r.NodeIDsAdd...), r.NodeIDsRemove...),
+	}
+}
+
 // Preflight diffs the change against the subnet's current on-chain membership.
 func (r MembershipProposal) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
 	current, err := FetchSubnetMembership(host, fetchRootKey, r.SubnetID, opts...)
@@ -185,6 +195,16 @@ func (d DeployGuestosAction) PayloadBlob() ([]byte, error) {
 
 func (d DeployGuestosAction) ProposalAction() (*governance.ProposalActionRequest, error) {
 	return execNnsAction(d)
+}
+
+// MirrorScope mirrors the subnet and the target version's record. The deploy
+// traps on a version that is not elected, which is exactly the mistake the
+// dry-run should catch, so the version is mirrored rather than fabricated.
+func (d DeployGuestosAction) MirrorScope() MirrorScope {
+	return MirrorScope{
+		Subnets:  []principal.Principal{d.SubnetID},
+		Versions: []string{d.ReplicaVersionID},
+	}
 }
 
 // Preflight checks the target replica version against the subnet's current

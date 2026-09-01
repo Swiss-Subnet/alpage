@@ -37,7 +37,7 @@
         # Set to fakeHash and run `nix build` to learn the real values, then
         # paste them back. Rehash when the IC release (flake pins) or deps move.
         genBindingsHash = "sha256-GNH1zK9sjdyHupYWMQ9nCOfkqtqd9sk6xM4MckWcvsY=";
-        genProtoHash = "sha256-6Yok/4Z7/fhG1acsvBjIwcERqjj8jCWj7c3R2bedeWc=";
+        genProtoHash = "sha256-KKQcDYVeVBJGQK+r286QxhEXx8wtizeuJi9mKGG6tTo=";
         alpVendorHash = "sha256-v/XCV+RQTqPNDHcK2tcj8G2kMIv4R22cqkSTaLWmIIQ=";
         siteNpmDepsHash = "sha256-qXcEt1n1jtucPf8YGAMWJ7+tkCMKVpcDzgLAumLVsEQ=";
 

@@ -77,6 +77,22 @@ func (p Provider) ShouldFetchRootKey(host string) bool {
 	return host != MainnetHost
 }
 
+// ResolveTarget applies host precedence (flag > provider > mainnet) and derives
+// fetch_root_key from the result. Every command that talks to a host resolves
+// both here: deriving the flag from the host alone drops an explicit
+// provider.fetch_root_key = false.
+func (p Provider) ResolveTarget(flagHost string) (host string, fetchRootKey bool) {
+	switch {
+	case flagHost != "":
+		host = flagHost
+	case p.Host != "":
+		host = p.Host
+	default:
+		host = MainnetHost
+	}
+	return host, p.ShouldFetchRootKey(host)
+}
+
 type Config struct {
 	Provider  Provider
 	Resources *Resources

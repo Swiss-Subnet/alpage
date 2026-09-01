@@ -49,7 +49,7 @@ var SchemaBlocks = []SchemaBlock{
 	},
 	{
 		Name: "guestos_version", File: "resources.hcl", Labels: []string{"name"},
-		Doc:   "A named GuestOS/replica version, referenced by node as guestos_version.<name>.id.",
+		Doc:   "A named GuestOS/replica version, referenced by node and by deploy_guestos as guestos_version.<name>.id. `alp guestos sync` generates the elected set as resources/guestos.hcl.",
 		Type:  GuestosVersionRes{},
 		Since: "v0.3.0",
 	},
@@ -136,15 +136,16 @@ var SchemaFieldDocs = map[string]string{
 
 	"NodeOperator.decommissioned": "Marks a node operator removed on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry. Implied for every operator under a decommissioned node_provider.",
 
-	"GuestosVersionRes.id":    "GuestOS/replica version hash. Spelled id, not hash, so it resolves through the same <kind>.<name>.id form as every other resource.",
-	"GuestosVersionRes.label": "Human-readable name (e.g. the release name).",
+	"GuestosVersionRes.id":      "GuestOS/replica version hash. Spelled id, not hash, so it resolves through the same <kind>.<name>.id form as every other resource.",
+	"GuestosVersionRes.label":   "Human-readable name (e.g. the release name).",
+	"GuestosVersionRes.default": "Marks the version every node is expected to run unless its own block overrides it, so a fleet-wide rollout is one edit here rather than one per node. At most one guestos_version may carry it; two is a load error. With a default declared, a node omitting guestos_version inherits it instead of going unchecked, so `guestos_version = \"none\"` is how a single node opts out.",
 
 	"NodeRes.id":              "Principal of the node.",
 	"NodeRes.label":           "Human-readable name.",
 	"NodeRes.subnet":          "Id of the subnet it belongs to (subnet.<name>.id). Empty means unassigned.",
 	"NodeRes.operator":        "Id of its node operator (node_operator.<name>.id).",
 	"NodeRes.decommissioned":  "Marks a node deregistered on-chain. Its block is kept so historical proposal payloads keep resolving to the ids they were submitted with; reconcile expects it to be absent from the registry.",
-	"NodeRes.guestos_version": "GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row \"via dashboard\" since that data may lag. Reconcile also checks the declared version against the NNS elected set and marks it \"NOT ELECTED\" if absent; when that source is unreadable the check is skipped rather than failing. Omitted means unchecked.",
+	"NodeRes.guestos_version": "GuestOS/replica version this node is expected to run. Not a registry fact: the registry stores one version per subnet, so reconcile reads the node's own /api/v2/status impl_version, which needs IPv6. If the node is unreachable it falls back to the public dashboard, marking the row \"via dashboard\" since that data may lag. Reconcile also checks the version against the NNS elected set and marks it \"NOT ELECTED\" if absent; when that source is unreadable the check is skipped rather than failing. Omitted inherits the guestos_version marked default, and means unchecked when there is none; setting it while a default exists marks the row \"[override]\". \"none\" opts the node out of the check entirely.",
 	"NodeRes.chip_id":         "The node's AMD SEV-SNP CHIP_ID as hex, the form AMD's KDS takes as its hwID parameter (base64 is also accepted; comparison is on the decoded bytes). 64 opaque bytes identifying the physical CPU, recorded by the registry canister only for a node onboarded with SEV. Pins hardware identity, not live TEE state. Reconcile also asks AMD KDS to vouch for the chip, caching the verdict in state.json. Omitted asserts the node carries none, so gaining, losing, or changing one is drift; an unread record reports \"unknown\".",
 
 	"Provider.host":           "Governance host URL. Defaults per command; overridden by --host.",
@@ -161,7 +162,7 @@ var SchemaFieldDocs = map[string]string{
 	"membershipBody.remove":    "A node to remove from the subnet; repeatable. See the add / remove block.",
 
 	"deployGuestosBody.subnet_id":          "Subnet whose nodes to upgrade (subnet.<name>.id).",
-	"deployGuestosBody.replica_version_id": "Replica version to deploy to every node in the subnet. Must be elected by the NNS: preflight checks the registry for a replica_version_<id> record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. --force submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable.",
+	"deployGuestosBody.replica_version_id": "Replica version to deploy to every node in the subnet (guestos_version.<name>.id, or the hash itself). Must be elected by the NNS: preflight checks the registry for a replica_version_<id> record (read via the registry explorer) and refuses an unelected version, since the NNS would reject the proposal. --force submits anyway, and also lets apply proceed when that lookup fails (downgraded to a warning); plan always degrades that way. Preflight additionally resolves the version's release name and election proposal from the public dashboard, which is display-only and degrades to a note when unavailable.",
 
 	"Node.id":    "Node id (node.<name>.id).",
 	"Node.label": "Optional human-readable name.",
@@ -203,8 +204,9 @@ var SchemaFieldSince = map[string]string{
 	"NodeOperator.dc":             "v0.1.0",
 	"NodeOperator.decommissioned": "v0.5.0",
 
-	"GuestosVersionRes.id":    "v0.3.0",
-	"GuestosVersionRes.label": "v0.3.0",
+	"GuestosVersionRes.id":      "v0.3.0",
+	"GuestosVersionRes.label":   "v0.3.0",
+	"GuestosVersionRes.default": "v0.5.0",
 
 	"NodeRes.id":              "v0.1.0",
 	"NodeRes.label":           "v0.1.0",

@@ -11,7 +11,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 - Three removal proposal kinds: `remove_nodes` (deregister nodes), `remove_node_operators` (delete operator records), and `remove_node_provider`. Each preflights the precondition its canister enforces, which otherwise fails late: a node still in a subnet makes `remove_nodes` panic *after* the NNS adopts the proposal, and an operator that still owns nodes is silently dropped from the payload, so the proposal reports success while changing nothing.
 - `remove_node_provider` is the first native governance action alpage submits rather than an `ExecuteNnsFunction`. `Action` gained `ProposalAction()` so a kind builds its own governance action; the existing kinds return a shared `ExecuteNnsFunction` helper and are otherwise unchanged.
 
+- `alp guestos sync` generates `resources/guestos.hcl` from the GuestOS versions the NNS currently has elected, so the version elected every week or two no longer has to be transcribed by hand. The elected set is replayed from the dashboard's election proposals, applying the unelections each one carries; `blessed_replica_versions` is not maintained and cannot be used for this. `--set <alias>` repoints a `guestos_version` block at the newest elected release, rewriting it in place so its comments and `default` marker survive.
+- `guestos_version` blocks accept `default = true`, the version every node is expected to run unless its own block overrides it. A subnet upgrades all at once, so a per-node version is the exception: with a default declared, a release bump is one edit rather than one per node. Two defaults are a load error. Reconcile names the default under the version table and marks the rows that override it.
+- `guestos_version.<name>.id` now resolves in `proposals.hcl`, so a `deploy_guestos` proposal names a version the same way nodes do instead of repeating the hash.
+
+- The dry-run runs against the live network's registry records for the subnet, nodes, operators, and versions the proposal names, so a payload now executes locally instead of failing on state the local NNS never had. Every membership, deploy, and removal dry-run used to end in `Status: Failed` with `Subnet record ... not found in the registry`, which proved the payload decoded and nothing more. A proposal naming an entity the network does not have fails the dry-run with that entity named.
+
 ### Changed
+
+- A node omitting `guestos_version` inherits the `guestos_version` marked `default` instead of going unchecked. Without a default declared, omitting it still means unchecked, so an existing config is unaffected until one is added. `guestos_version = "none"` opts a single node out.
 
 - `plan` and a submit's preflight always print what they checked and end on an explicit verdict. A clean result used to print nothing at all, which reads the same as a proposal that was never parsed, so a plan that silently did nothing was indistinguishable from one that passed.
 

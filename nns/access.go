@@ -2,9 +2,7 @@ package nns
 
 import (
 	"fmt"
-	"net/url"
 
-	"github.com/aviate-labs/agent-go"
 	"github.com/aviate-labs/agent-go/principal"
 	"github.com/swiss-subnet/alpage/gen/governance"
 )
@@ -32,23 +30,7 @@ func (a NeuronAccess) String() string {
 // signed as id succeeds only for the neuron's controller or a hotkey, so it
 // doubles as the authorization check.
 func CheckNeuronAccess(id *Identity, host string, fetchRootKey bool, neuronID uint64, opts ...FetchOption) (NeuronAccess, error) {
-	if host == "" {
-		host = MainnetHost
-	}
-	u, err := url.Parse(host)
-	if err != nil {
-		return NeuronAccessNone, fmt.Errorf("parse host %q: %w", host, err)
-	}
-	var o fetchOpts
-	for _, opt := range opts {
-		opt(&o)
-	}
-	a, err := governance.NewGovernanceAgent(GovernanceID, agent.Config{
-		Identity:                       id.id,
-		ClientConfig:                   clientOptions(u),
-		FetchRootKey:                   fetchRootKey,
-		DisableSignedQueryVerification: o.disableQueryVerify,
-	})
+	a, err := newGovernanceAgent(host, fetchRootKey, id, opts)
 	if err != nil {
 		return NeuronAccessNone, fmt.Errorf("new governance agent: %w", err)
 	}

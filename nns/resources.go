@@ -93,6 +93,27 @@ type GuestosVersionRes struct {
 	Name  string `hcl:"name,label"`
 	ID    string `hcl:"id"`
 	Label string `hcl:"label,optional"`
+	// Default marks the version every node is expected to run unless its own
+	// block overrides it. At most one block may carry it.
+	Default bool `hcl:"default,optional"`
+}
+
+// GuestosVersionNone opts one node out of the version check, which an omitted
+// guestos_version no longer does once a default exists.
+const GuestosVersionNone = "none"
+
+// VersionSource says where a node's expected version came from.
+type VersionSource string
+
+const (
+	VersionFromNode    VersionSource = "node"
+	VersionFromDefault VersionSource = "default"
+)
+
+// VersionExpectation is the version one node is expected to run, and why.
+type VersionExpectation struct {
+	Version string
+	Source  VersionSource
 }
 
 // NodeRes is a node resource, referenced from proposals as node.<name>.id.
@@ -115,12 +136,62 @@ type NodeRes struct {
 	// GuestosVersion is the GuestOS/replica version this node is expected to be
 	// running. Unlike every other reconciled field this is not a registry fact:
 	// the registry stores a version per subnet, not per node, so it is read from
-	// the node's own /api/v2/status impl_version. Omitted means unchecked.
+	// the node's own /api/v2/status impl_version. Omitted inherits the
+	// guestos_version marked default, or means unchecked when there is none;
+	// "none" opts out.
 	GuestosVersion string `hcl:"guestos_version,optional"`
 	// ChipID pins the node's AMD SEV-SNP CHIP_ID, base64 as the registry serves
 	// it. Omitted asserts the node carries none, so gaining, losing, or
 	// changing one is drift.
 	ChipID string `hcl:"chip_id,optional"`
+}
+
+// DefaultVersion returns the guestos_version block marked default, if any.
+func (r *Resources) DefaultVersion() (GuestosVersionRes, bool) {
+	if r == nil {
+		return GuestosVersionRes{}, false
+	}
+	for _, v := range r.Versions {
+		if v.Default {
+			return v, true
+		}
+	}
+	return GuestosVersionRes{}, false
+}
+
+// ExpectedVersion resolves the version n is expected to run: its own
+// guestos_version, else the default. ok is false when nothing is expected, so
+// reconcile skips the node. The elected-version fetch, the short-circuit, and
+// the per-node read must all agree on this set, or reconcile reports clean on
+// nodes it never collected.
+func (r *Resources) ExpectedVersion(n NodeRes) (VersionExpectation, bool) {
+	switch {
+	case n.Decommissioned, n.GuestosVersion == GuestosVersionNone:
+		return VersionExpectation{}, false
+	case n.GuestosVersion != "":
+		return VersionExpectation{Version: n.GuestosVersion, Source: VersionFromNode}, true
+	}
+	if d, ok := r.DefaultVersion(); ok {
+		return VersionExpectation{Version: d.ID, Source: VersionFromDefault}, true
+	}
+	return VersionExpectation{}, false
+}
+
+// VersionCheckedNodes are the nodes reconcile reads a running version from,
+// each with what it is expected to be running.
+func (r *Resources) VersionCheckedNodes() ([]NodeRes, []VersionExpectation) {
+	if r == nil {
+		return nil, nil
+	}
+	var nodes []NodeRes
+	var want []VersionExpectation
+	for _, n := range r.Nodes {
+		if e, ok := r.ExpectedVersion(n); ok {
+			nodes = append(nodes, n)
+			want = append(want, e)
+		}
+	}
+	return nodes, want
 }
 
 func (s Subnet) name() string        { return s.Name }
@@ -138,6 +209,15 @@ func (o NodeOperator) label() string { return o.Label }
 func (n NodeRes) name() string       { return n.Name }
 func (n NodeRes) id() string         { return n.ID }
 func (n NodeRes) label() string      { return n.Label }
+
+// Describe renders the version for humans: its release name where one is
+// declared, the hash otherwise.
+func (v GuestosVersionRes) Describe() string {
+	if v.Label == "" {
+		return v.ID
+	}
+	return fmt.Sprintf("%s (%s)", v.Label, v.ID)
+}
 
 func (v GuestosVersionRes) name() string  { return v.Name }
 func (v GuestosVersionRes) id() string    { return v.ID }
@@ -253,6 +333,9 @@ func loadResources(path string) (*Resources, error) {
 			return nil, err
 		}
 	}
+	if err := checkOneDefaultVersion(rf.Versions); err != nil {
+		return nil, err
+	}
 	labels := map[string]string{}
 	addLabels(labels, rf.Nodes)
 	addLabels(labels, rf.Subnets)
@@ -263,6 +346,22 @@ func loadResources(path string) (*Resources, error) {
 		Nodes: rf.Nodes, Subnets: rf.Subnets, Providers: rf.Providers,
 		Operators: rf.Operators, DCs: rf.DCs, Versions: rf.Versions, labels: labels,
 	}, nil
+}
+
+// checkOneDefaultVersion rejects a second default: with two, which one a node
+// inherits would come down to block order.
+func checkOneDefaultVersion(vs []GuestosVersionRes) error {
+	first := ""
+	for _, v := range vs {
+		if !v.Default {
+			continue
+		}
+		if first != "" {
+			return fmt.Errorf("guestos_version %q and %q are both marked default; only one may be", first, v.Name)
+		}
+		first = v.Name
+	}
+	return nil
 }
 
 func setVar[T namedResource](ctx *hcl.EvalContext, name string, rs []T) {
@@ -301,6 +400,12 @@ func checkUnique(body hcl.Body) error {
 			return fmt.Errorf("duplicate %s %q: declared at %s and %s", b.Type, b.Labels[0], prev, b.DefRange)
 		}
 		names[key] = b.DefRange
+		// Versions are exempt: an alias block deliberately carries the same hash
+		// as the catalogue entry it points at, and both resolve to that hash, so
+		// there is no reference to get wrong.
+		if b.Type == "guestos_version" {
+			continue
+		}
 		id, err := blockID(b)
 		if err != nil || id == "" {
 			continue
@@ -354,6 +459,9 @@ func (r *Resources) EvalContext() *hcl.EvalContext {
 	setVar(ctx, "node_provider", r.Providers)
 	setVar(ctx, "node_operator", r.Operators)
 	setVar(ctx, "data_center", r.DCs)
+	// Exported so a deploy_guestos proposal can name a version the same way
+	// nodes do, rather than repeating the hash.
+	setVar(ctx, "guestos_version", r.Versions)
 	return ctx
 }
 

@@ -161,6 +161,15 @@ const dashboardElectionLimit = 100
 // proposal via the ICP dashboard. Returns nil, nil when the dashboard has no
 // election for the version (e.g. older than the scan window).
 func FetchRelease(dashboardBase, versionID string) (*Release, error) {
+	body, err := fetchElections(dashboardBase)
+	if err != nil {
+		return nil, err
+	}
+	return parseRelease(body, versionID)
+}
+
+// fetchElections reads the dashboard's recent executed GuestOS elections.
+func fetchElections(dashboardBase string) ([]byte, error) {
 	u := fmt.Sprintf("%s?limit=%d&include_topic=TOPIC_IC_OS_VERSION_ELECTION&include_status=EXECUTED",
 		strings.TrimRight(dashboardBase, "/"), dashboardElectionLimit)
 	client := &http.Client{Timeout: queryTimeout}
@@ -176,17 +185,18 @@ func FetchRelease(dashboardBase, versionID string) (*Release, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read dashboard elections: %w", err)
 	}
-	return parseRelease(body, versionID)
+	return body, nil
 }
 
 // electionProposal is one TOPIC_IC_OS_VERSION_ELECTION proposal. The elected
-// version is payload.replica_version_to_elect; the release name lives only in
-// the summary markdown.
+// version is payload.replica_version_to_elect; the same proposal usually
+// unelects older versions. The release name lives only in the summary markdown.
 type electionProposal struct {
 	ID      uint64 `json:"id"`
 	Summary string `json:"summary"`
 	Payload struct {
-		ReplicaVersionToElect string `json:"replica_version_to_elect"`
+		ReplicaVersionToElect    string   `json:"replica_version_to_elect"`
+		ReplicaVersionsToUnelect []string `json:"replica_versions_to_unelect"`
 	} `json:"payload"`
 }
 
@@ -221,5 +231,8 @@ func releaseName(summary string) string {
 	if len(m) < 2 {
 		return ""
 	}
-	return strings.ReplaceAll(m[1], `\_`, "_")
+	// Some summaries bold the link text ("[**release-...-base**]"). The
+	// asterisks are markup, not part of the tag, and left in they would break
+	// both the generated block label and the -base variant match.
+	return strings.Trim(strings.ReplaceAll(m[1], `\_`, "_"), "* ")
 }

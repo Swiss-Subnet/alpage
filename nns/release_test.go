@@ -202,6 +202,15 @@ func TestPlanUnverifiedElectionWarns(t *testing.T) {
 	}
 }
 
+// Real summaries bold the link text. Left in, the asterisks would land in the
+// generated block label and stop the name matching the -base variant.
+func TestReleaseNameStripsEmphasis(t *testing.T) {
+	const summary = `Release Notes for [**release-2026-08-06\_04-21-fix-repro**](https://github.com/dfinity/ic/tree/x)`
+	if got, want := releaseName(summary), "release-2026-08-06_04-21-fix-repro"; got != want {
+		t.Errorf("releaseName = %q, want %q", got, want)
+	}
+}
+
 func TestReleaseNameMissing(t *testing.T) {
 	// A summary without the release-notes header yields no name, not a crash.
 	if got := releaseName("Security patch update"); got != "" {
