@@ -39,6 +39,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 
 - `add_node_provider` and `remove_node_provider` show their payload. Every view of them used to stop below the URL, reporting a status for a change nobody could read.
 
+- The dry run prints the whole summary as the local NNS stored it, with its byte count, so a heredoc body can be proofread before it goes to mainnet. `alp status` still shows the first line per proposal. A `title` shorter than 5 bytes or longer than 256, or a summary over 30000, is now rejected when the config loads.
+
 - The dry-run output says that the proposal id, proposer neuron and tally it prints come from the local NNS rather than from mainnet.
 
 ## [0.4.0] - 2026-08-07

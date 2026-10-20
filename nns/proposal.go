@@ -132,7 +132,17 @@ func render(pi *governance.ProposalInfo, verbose bool) string {
 			fmt.Fprintf(&b, "  Title:   %s\n", *pi.Proposal.Title)
 		}
 		if s := pi.Proposal.Summary; s != "" {
-			fmt.Fprintf(&b, "  Summary: %s\n", firstLine(s))
+			// Verbose prints the stored summary in full, which is the only way
+			// to proofread a heredoc body before submitting it. The compact form
+			// keeps one line so a list of proposals stays a list.
+			if verbose {
+				fmt.Fprintf(&b, "  Summary (%d bytes):\n", len(s))
+				for _, line := range strings.Split(s, "\n") {
+					fmt.Fprintf(&b, "    %s\n", line)
+				}
+			} else {
+				fmt.Fprintf(&b, "  Summary: %s\n", firstLine(s))
+			}
 		}
 		if u := pi.Proposal.Url; u != "" {
 			fmt.Fprintf(&b, "  URL:     %s\n", u)

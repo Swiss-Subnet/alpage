@@ -21,7 +21,7 @@ func loadUpdateSubnet(t *testing.T, block string) UpdateSubnetAction {
 	cfg := filepath.Join(dir, "proposals.hcl")
 	src := `proposal "cfg" {
   kind  = "update_subnet"
-  title = "t"
+  title = "Fixture proposal"
   update_subnet {
     subnet_id = "` + dryRunSeedSubnet + `"
 ` + block + `
@@ -112,7 +112,7 @@ func TestUpdateSubnetFeaturesRequiresEveryField(t *testing.T) {
 	cfg := filepath.Join(dir, "proposals.hcl")
 	src := `proposal "cfg" {
   kind  = "update_subnet"
-  title = "t"
+  title = "Fixture proposal"
   update_subnet {
     subnet_id = "` + dryRunSeedSubnet + `"
     features {
@@ -140,7 +140,7 @@ func TestUpdateSubnetRejectsEmptySettings(t *testing.T) {
 	cfg := filepath.Join(dir, "proposals.hcl")
 	src := `proposal "cfg" {
   kind  = "update_subnet"
-  title = "t"
+  title = "Fixture proposal"
   update_subnet {
     subnet_id = "` + dryRunSeedSubnet + `"
   }

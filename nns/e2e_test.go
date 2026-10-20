@@ -598,3 +598,40 @@ func TestSubmitViaHotkey(t *testing.T) {
 	t.Logf("\n%s", rendered)
 	assertMembershipRendered(t, rendered)
 }
+
+// TestSummaryRoundTripsThroughGovernance is the ground truth behind the dry
+// run's summary output. A multi-line body reaching governance intact is what
+// makes printing it back evidence rather than an echo of the config, and the
+// 30000 byte cap alpage enforces at load is only worth enforcing if it is the
+// cap the canister enforces.
+func TestSummaryRoundTripsThroughGovernance(t *testing.T) {
+	n := startNNS(t, principal.Principal{})
+	neuron := n.ProposerNeuron()
+
+	body := "First line.\n\n" + strings.Repeat("Body that a heredoc would carry. ", 40) + "\nLast line.\n"
+	d := DeployGuestosAction{
+		Meta:             Meta{Title: "summary round trip", Summary: body},
+		SubnetID:         subnetX,
+		ReplicaVersionID: "0000000000000000000000000000000000000001",
+	}
+	pid, err := n.SubmitAs(n.Proposer, neuron, d)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	pi, err := n.GetProposalInfo(pid)
+	if err != nil {
+		t.Fatalf("get proposal info: %v", err)
+	}
+	if pi.Proposal == nil || pi.Proposal.Summary != body {
+		t.Errorf("governance stored a different summary:\n%q", pi.Proposal.Summary)
+	}
+	if rendered := RenderVerbose(pi); !strings.Contains(rendered, "Last line.") {
+		t.Errorf("the verbose render dropped the end of the body:\n%s", rendered)
+	}
+
+	over := d
+	over.Summary = strings.Repeat("s", proposalSummaryMax+1)
+	if _, err := n.SubmitAs(n.Proposer, neuron, over); err == nil {
+		t.Errorf("governance accepted %d bytes, so the cap alpage enforces at load is wrong", len(over.Summary))
+	}
+}

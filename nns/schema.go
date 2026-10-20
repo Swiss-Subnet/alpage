@@ -157,8 +157,8 @@ var SchemaFieldDocs = map[string]string{
 	"Provider.fetch_root_key": "Whether to fetch the IC root key. Unset defaults to true for non-mainnet hosts.",
 
 	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider, add_data_centers, add_node_provider, add_node_operator).",
-	"Spec.title":   "Proposal title shown on the NNS.",
-	"Spec.summary": "Proposal summary (markdown).",
+	"Spec.title":   "Proposal title shown on the NNS. Governance requires 5 to 256 bytes.",
+	"Spec.summary": "Proposal summary (markdown), up to 30000 bytes. A heredoc body is submitted in full, and the dry run prints it back as the NNS stored it.",
 	"Spec.url":     "Reference URL for the proposal, such as a forum thread. Governance accepts only an https link on forum.dfinity.org. Alpage applies the same rule when the config loads.",
 
 	"membershipBody.subnet_id": "Subnet whose membership changes (subnet.<name>.id).",

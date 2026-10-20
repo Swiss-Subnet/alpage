@@ -28,7 +28,7 @@ func specFromBody(t *testing.T, kind, body string) (Action, error) {
 	cfg := fmt.Sprintf(`
 proposal "fixture" {
   kind    = %q
-  title   = "t"
+  title   = "Fixture proposal"
   summary = "s"
   url     = "https://forum.dfinity.org/t/fixture"
 %s

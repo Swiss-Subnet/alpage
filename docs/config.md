@@ -96,8 +96,8 @@ This page documents the current development schema, ahead of the latest release.
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
 | `kind` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider, add_data_centers, add_node_provider, add_node_operator). |
-| `title` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal title shown on the NNS. |
-| `summary` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal summary (markdown). |
+| `title` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal title shown on the NNS. Governance requires 5 to 256 bytes. |
+| `summary` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal summary (markdown), up to 30000 bytes. A heredoc body is submitted in full, and the dry run prints it back as the NNS stored it. |
 | `url` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Reference URL for the proposal, such as a forum thread. Governance accepts only an https link on forum.dfinity.org. Alpage applies the same rule when the config loads. |
 
 ### `membership { }`

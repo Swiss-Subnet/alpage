@@ -176,6 +176,26 @@ const DefaultConfigPath = "proposals.hcl"
 // so a subdomain or an explicit port is rejected.
 const proposalURLDomain = "forum.dfinity.org"
 
+// Governance's limits on the metadata, in bytes rather than characters. The
+// summary has no other rule: any text under the cap is accepted as it stands.
+const (
+	proposalTitleMin   = 5
+	proposalTitleMax   = 256
+	proposalSummaryMax = 30000
+)
+
+// validateMeta mirrors validate_user_submitted_proposal_fields in governance,
+// which reports all of this only once a submission has been signed and sent.
+func validateMeta(m Meta) error {
+	if n := len(m.Title); n < proposalTitleMin || n > proposalTitleMax {
+		return fmt.Errorf("title is %d bytes, outside governance's range of %d to %d", n, proposalTitleMin, proposalTitleMax)
+	}
+	if n := len(m.Summary); n > proposalSummaryMax {
+		return fmt.Errorf("summary is %d bytes, over governance's limit of %d", n, proposalSummaryMax)
+	}
+	return validateProposalURL(m.URL)
+}
+
 // validateProposalURL mirrors validate_proposal_url in governance, which only
 // reports a rejected url after the payload has already been built and submitted.
 // An empty url is legal there, so it is legal here.
@@ -233,7 +253,7 @@ func LoadConfig(path string) (*Config, error) {
 		}
 		seen[name] = true
 		cfg.Proposals[i].evalCtx = evalCtx
-		if err := validateProposalURL(cfg.Proposals[i].URL); err != nil {
+		if err := validateMeta(cfg.Proposals[i].Meta()); err != nil {
 			return nil, fmt.Errorf("%s: proposal %q: %w", path, name, err)
 		}
 		if _, err := cfg.Proposals[i].Action(); err != nil {

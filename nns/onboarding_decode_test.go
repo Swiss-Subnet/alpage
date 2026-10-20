@@ -54,7 +54,7 @@ func TestAddDataCentersReferencesResourceRegion(t *testing.T) {
 	action, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_data_centers"
-  title = "Add"
+  title = "Add fixture"
 
   add_data_centers {
     dc {
@@ -80,7 +80,7 @@ func TestOnboardingLowercasesDataCenterIDs(t *testing.T) {
 	add, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_data_centers"
-  title = "Add"
+  title = "Add fixture"
 
   add_data_centers {
     dc {
@@ -101,7 +101,7 @@ proposal "p" {
 	op, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_node_operator"
-  title = "Add"
+  title = "Add fixture"
 
   add_node_operator {
     node_operator_id = node_operator.op.id
@@ -133,7 +133,7 @@ func TestAddNodeProviderRejectsBadRewardAccount(t *testing.T) {
 			_, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_node_provider"
-  title = "Add"
+  title = "Add fixture"
 
   add_node_provider {
     node_provider_id = node_provider.np.id
@@ -157,7 +157,7 @@ func TestAddNodeProviderAcceptsDerivedRewardAccount(t *testing.T) {
 	action, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_node_provider"
-  title = "Add"
+  title = "Add fixture"
 
   add_node_provider {
     node_provider_id = node_provider.np.id
@@ -203,7 +203,7 @@ func TestAddDataCentersRejectsOutOfRangeGPS(t *testing.T) {
 	_, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_data_centers"
-  title = "Add"
+  title = "Add fixture"
 
   add_data_centers {
     dc {
@@ -230,7 +230,7 @@ func TestAddNodeOperatorPayloadOmitsLegacyRewardableNodes(t *testing.T) {
 	action, err := onboardingConfig(t, `
 proposal "p" {
   kind  = "add_node_operator"
-  title = "Add"
+  title = "Add fixture"
 
   add_node_operator {
     node_operator_id     = node_operator.op.id

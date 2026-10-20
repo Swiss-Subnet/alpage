@@ -3,6 +3,7 @@ package nns
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	governancepb "github.com/swiss-subnet/alpage/nns/pb/governance"
@@ -321,6 +322,28 @@ func TestProposalURLMatchesGovernanceRules(t *testing.T) {
 		err := validateProposalURL(tc.url)
 		if (err == nil) != tc.want {
 			t.Errorf("url %q: accepted = %v, want %v (%v)", tc.url, err == nil, tc.want, err)
+		}
+	}
+}
+
+// Governance requires a title of 5 to 256 bytes and caps the summary at 30000,
+// and it says so only once a submission has been signed and sent.
+func TestProposalMetaMatchesGovernanceLimits(t *testing.T) {
+	ok := Meta{Title: "Swap two nodes", Summary: "why", URL: "https://forum.dfinity.org/t/x"}
+	if err := validateMeta(ok); err != nil {
+		t.Errorf("a normal proposal must load: %v", err)
+	}
+	for name, m := range map[string]Meta{
+		"empty title": {Title: ""},
+		"short title": {Title: "Swap"},
+		"long title":  {Title: strings.Repeat("t", 257)},
+		"long summary": {
+			Title:   "Swap two nodes",
+			Summary: strings.Repeat("s", 30001),
+		},
+	} {
+		if err := validateMeta(m); err == nil {
+			t.Errorf("%s: governance would reject this at submission", name)
 		}
 	}
 }
