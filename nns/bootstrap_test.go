@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -265,5 +267,83 @@ func TestCacheDirIsReleaseKeyed(t *testing.T) {
 	}
 	if !strings.Contains(a, "release-A") {
 		t.Errorf("cache dir should name the release: %q", a)
+	}
+}
+
+// The nix system each flake hash is keyed by, mapped onto the release asset
+// naming pocketICSHA256 uses.
+var flakeSystemAsset = map[string]string{
+	"x86_64-linux":   "x86_64-linux",
+	"aarch64-linux":  "arm64-linux",
+	"x86_64-darwin":  "x86_64-darwin",
+	"aarch64-darwin": "arm64-darwin",
+}
+
+// sriHex decodes a nix SRI hash into the hex form the Go pins are written in.
+func sriHex(t *testing.T, sri string) string {
+	t.Helper()
+	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(sri, "sha256-"))
+	if err != nil {
+		t.Fatalf("decode %q: %v", sri, err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// flakeRelease reads defaultIcRelease out of flake.nix. Comment lines are
+// dropped first, because the override example near the bottom of the file
+// repeats every attribute name this parses.
+func flakeRelease(t *testing.T) (tag, canisters string, pocketIC map[string]string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "flake.nix"))
+	if err != nil {
+		t.Fatalf("read flake.nix: %v", err)
+	}
+	var kept []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			kept = append(kept, line)
+		}
+	}
+	nix := strings.Join(kept, "\n")
+
+	find := func(pattern string) string {
+		m := regexp.MustCompile(pattern).FindStringSubmatch(nix)
+		if m == nil {
+			t.Fatalf("flake.nix has no %s, so this test's parsing is out of date", pattern)
+		}
+		return m[1]
+	}
+	tag = find(`tag\s*=\s*"([^"]+)"`)
+	canisters = sriHex(t, find(`canistersTarHash\s*=\s*"([^"]+)"`))
+
+	pocketIC = map[string]string{}
+	for _, m := range regexp.MustCompile(`"([^"]+)"\s*=\s*"(sha256-[^"]+)"`).FindAllStringSubmatch(find(`pocketIcHashes\s*=\s*\{([^}]*)\}`), -1) {
+		asset, ok := flakeSystemAsset[m[1]]
+		if !ok {
+			t.Fatalf("flake.nix pins an unknown nix system %q", m[1])
+		}
+		pocketIC[asset] = sriHex(t, m[2])
+	}
+	return tag, canisters, pocketIC
+}
+
+// The devShell exports POCKET_IC_BIN and the wasm paths, so a pin that goes
+// stale here is invisible to everyone working on alpage and breaks only the
+// download path a plain `go install` build depends on.
+func TestBootstrapPinsMatchFlake(t *testing.T) {
+	tag, canisters, pocketIC := flakeRelease(t)
+	if ICReleaseTag != tag {
+		t.Errorf("ICReleaseTag = %q, flake.nix pins %q", ICReleaseTag, tag)
+	}
+	if canistersSHA256 != canisters {
+		t.Errorf("canistersSHA256 = %q, flake.nix pins %q", canistersSHA256, canisters)
+	}
+	if len(pocketIC) != len(flakeSystemAsset) || len(pocketICSHA256) != len(flakeSystemAsset) {
+		t.Fatalf("every platform must be pinned in both files, got %d in the flake and %d in Go", len(pocketIC), len(pocketICSHA256))
+	}
+	for asset, want := range pocketIC {
+		if got := pocketICSHA256[asset]; got != want {
+			t.Errorf("pocketICSHA256[%q] = %q, flake.nix pins %q", asset, got, want)
+		}
 	}
 }

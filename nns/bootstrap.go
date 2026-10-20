@@ -25,18 +25,18 @@ import (
 // hash so a download cannot silently differ from what nix would have supplied.
 const (
 	// ICReleaseTag is the pinned IC release the dry-run artifacts come from.
-	ICReleaseTag = "release-2026-07-09_04-35-base"
+	ICReleaseTag = "release-2026-10-16_03-29-base"
 
 	icReleaseBase   = "https://github.com/dfinity/ic/releases/download/"
-	canistersSHA256 = "32b517094574f3321ffe61e403ce1f8b3b82a7406553cd40a20100c5d16e6a93"
+	canistersSHA256 = "648033da14178fea119046383b7802c6d0a96f53c3f22d06950242c4b9f5824c"
 )
 
 // pocketICSHA256 is the sha256 of each platform's gzipped pocket-ic asset.
 var pocketICSHA256 = map[string]string{
-	"x86_64-linux":  "d1b63d8863281f3051db04fb2da3185c0d6abc0bc74d681040b8a34c5bf7e33f",
-	"arm64-linux":   "e3aae8f1db901d7c63bd46c7b5bbac211afc6495227024b5e198a6f6fc074c03",
-	"x86_64-darwin": "a274bb77568e4dc6df0f7e073e662a8e151fd3010e41fa85f1e2f997d4e34a6c",
-	"arm64-darwin":  "a915936311b1311c408b69ec30125599093ad964d26c9867527e61cfb34f9a1f",
+	"x86_64-linux":  "e7d9a4cf9c0211acab55f70660185e72d8087ecc036580c63bd1789a048341cb",
+	"arm64-linux":   "27ccedd53fc4823a1806036e3227eac9c2e30883988622cc2935993382540b17",
+	"x86_64-darwin": "3ea8b39473ab1cd8add9b0e339f74c1c1ac11b2ec7f8d6756ebe93b592a7dc79",
+	"arm64-darwin":  "33329037253df2fc3efa404b136bafd9378a759aaa936fdb8cb2c7d097bfe00b",
 }
 
 // canisterMembers maps the tar members alp needs to their cached basenames.
