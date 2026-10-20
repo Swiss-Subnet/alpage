@@ -108,11 +108,12 @@ func diffList(p *UpdateSubnetPlan, field string, want, current *[]string) {
 	p.Changes = append(p.Changes, c)
 }
 
-// diffFeatures diffs the features record and blocks a sev_enabled change:
-// do_update_subnet's validate_update_sev_feature panics on one, which happens
-// only after the proposal is adopted. A no-op transition is what lets the other
-// two features be updated at all, so it is reported as the reason the block is
-// declarable rather than as a change.
+// diffFeatures diffs the features record. Only turning sev_enabled off blocks:
+// do_update_subnet's validate_sev_is_not_disabled panics on that, after the
+// proposal is adopted. Turning it on is allowed, but the SEV subnet invariants
+// then require every node to carry a chip ID and the subnet's GuestOS version
+// to have launch measurements, and those also trap post-adoption, so enabling
+// is reported as the live change it is rather than waved through.
 func diffFeatures(p *UpdateSubnetPlan, want, current *SubnetFeatureSet) {
 	if want == nil {
 		return
@@ -125,11 +126,12 @@ func diffFeatures(p *UpdateSubnetPlan, want, current *SubnetFeatureSet) {
 		Field: "features", From: cur.String(), To: want.String(),
 		NoOp: *want == cur,
 	}
-	if want.SevEnabled != cur.SevEnabled {
+	switch {
+	case cur.SevEnabled && !want.SevEnabled:
 		c.Blocking = true
-		c.Note = fmt.Sprintf(
-			"sev_enabled %t -> %t: the registry rejects any change to it, since it can only be set when the subnet is created",
-			cur.SevEnabled, want.SevEnabled)
+		c.Note = "sev_enabled true -> false: the registry refuses to disable SEV. Note that features is replaced wholesale, so omitting sev_enabled reads as disabling it"
+	case !cur.SevEnabled && want.SevEnabled:
+		c.Note = "sev_enabled false -> true: allowed, but execution traps unless every node already carries a chip_id and the subnet's GuestOS version has launch measurements"
 	}
 	p.Changes = append(p.Changes, c)
 }

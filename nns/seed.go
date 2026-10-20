@@ -315,28 +315,25 @@ func uniqueBytes(salt *int) []byte {
 	return append([]byte("seed-unique-"), b...)
 }
 
-// seedReplicaVersions elects every version in use (empty ReplicaVersionRecord,
-// which the invariant accepts because release_package_urls is empty) and
-// blesses them, satisfying check_replica_version_invariants.
+// seedReplicaVersions elects every version in use by writing its
+// replica_version_ record (empty, which the invariant accepts because
+// release_package_urls is empty), satisfying check_replica_version_invariants.
 //
-// blessOnly names versions whose replica_version_ record is already mirrored
-// from mainnet: they need blessing, but writing the record again would be a
-// second INSERT on one key, which the registry rejects.
-func seedReplicaVersions(versions map[string]bool, blessOnly []string) ([]registryMutation, error) {
+// Election is the record's existence. There is no separate blessed list any
+// more: check_replica_version_invariants derives the elected set from the
+// replica_version_ records themselves, and the registry dropped both the
+// blessed_replica_versions key and the BlessedReplicaVersions message.
+//
+// mirroredVersions names versions whose record already came from the mirror.
+// Writing one again would be a second INSERT on one key, which the registry
+// rejects, and it is already elected by virtue of being there.
+func seedReplicaVersions(versions map[string]bool, mirroredVersions []string) ([]registryMutation, error) {
 	var muts []registryMutation
-	var blessed registrypb.BlessedReplicaVersions
-	mirrored := make(map[string]bool, len(blessOnly))
-	for _, v := range blessOnly {
-		if mirrored[v] {
-			continue
-		}
+	mirrored := make(map[string]bool, len(mirroredVersions))
+	for _, v := range mirroredVersions {
 		mirrored[v] = true
-		blessed.BlessedVersionIds = append(blessed.BlessedVersionIds, v)
 	}
 	for v := range versions {
-		// A seed running a mirrored version needs neither: the record comes from
-		// the mirror and it is blessed above. Writing either again would be a
-		// second entry on one key.
 		if mirrored[v] {
 			continue
 		}
@@ -349,17 +346,7 @@ func seedReplicaVersions(versions map[string]bool, blessOnly []string) ([]regist
 			MutationType: mutationInsert,
 			Value:        rec,
 		})
-		blessed.BlessedVersionIds = append(blessed.BlessedVersionIds, v)
 	}
-	blob, err := proto.Marshal(&blessed)
-	if err != nil {
-		return nil, fmt.Errorf("marshal blessed_replica_versions: %w", err)
-	}
-	muts = append(muts, registryMutation{
-		Key:          []byte("blessed_replica_versions"),
-		MutationType: mutationInsert,
-		Value:        blob,
-	})
 	return muts, nil
 }
 
@@ -387,6 +374,12 @@ func seedCryptoRecords(subnetID principal.Principal) ([]registryMutation, error)
 		InitialNiDkgTranscriptHighThreshold: &registrypb.InitialNiDkgTranscriptRecord{
 			Threshold:             1,
 			InternalCspTranscript: transcript,
+		},
+		// The invariant requires a cup_type. Genesis is the one that fits a
+		// subnet the seed brings into existence, as opposed to one recovered
+		// or split, and GenesisArgs carries no fields to get wrong.
+		CupType: &registrypb.CatchUpPackageContents_Genesis{
+			Genesis: &registrypb.GenesisArgs{},
 		},
 	})
 	if err != nil {

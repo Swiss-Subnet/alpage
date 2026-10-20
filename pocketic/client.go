@@ -1,5 +1,5 @@
-// Package pocketic is a thin REST client for the PocketIC server (v13.x, IC
-// release-2026-04-10). It talks the server-native /instances/.../{read,update}
+// Package pocketic is a thin REST client for the PocketIC server (v16.x, IC
+// release-2026-10-16). It talks the server-native /instances/.../{read,update}
 // endpoints: plain JSON, standard-base64 raw-byte fields, no CBOR, no signing.
 package pocketic
 
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const serverMajorVersion = 15
+const serverMajorVersion = 16
 
 // b64 is STANDARD base64 (base64::encode in the server's rest.rs uses the
 // v0.13 top-level API, i.e. the STANDARD alphabet with padding), NOT url-safe.

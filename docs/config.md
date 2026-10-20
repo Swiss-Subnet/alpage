@@ -121,7 +121,7 @@ This page documents the current development schema, ahead of the latest release.
 
 ### `update_subnet { }`
 
-<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "update_subnet": update_subnet (UPDATE_CONFIG_OF_SUBNET). Changes a subnet's configuration record. Every field is optional and an omitted one is left untouched on-chain, so a proposal changes exactly what it declares. Preflight diffs every declared field against the current record. Two payload fields are not settings here: subnet_type, which the registry asserts is unchanged, and a sev_enabled change, which it rejects outright.
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "update_subnet": update_subnet (UPDATE_CONFIG_OF_SUBNET). Changes a subnet's configuration record. Every field is optional and an omitted one is left untouched on-chain, so a proposal changes exactly what it declares. Preflight diffs every declared field against the current record. Two payload fields are not ordinary settings here: subnet_type, which the registry asserts is unchanged, and sev_enabled, which the registry refuses to turn off.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
@@ -214,7 +214,7 @@ This page documents the current development schema, ahead of the latest release.
 |-------|------|----------|-------|-------------|
 | `canister_sandboxing` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether canister execution happens in a sandboxed process. Disabled by default. |
 | `http_requests` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether canisters on the subnet may perform outbound HTTP(S) requests. |
-| `sev_enabled` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether the subnet runs with SEV-SNP enabled. Required because the features record is replaced wholesale, but it cannot be changed: the registry only accepts sev_enabled as it was set when the subnet was created, and traps on any change after the proposal is adopted. State the subnet's current value; preflight and the dry-run both reject anything else. |
+| `sev_enabled` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Whether the subnet runs with SEV-SNP enabled. Required because the features record is replaced wholesale, which is also the trap: omitting it reads as disabling SEV, and the registry refuses to disable it. Enabling it is allowed, but execution traps unless every node already carries a chip_id and the subnet's GuestOS version has launch measurements. Preflight blocks a disable and warns on an enable. |
 
 ### `resource_limits { }`
 

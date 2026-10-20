@@ -248,12 +248,11 @@ func TestSeedMergesMirroredAggregatesOnce(t *testing.T) {
 	if len(list.Subnets) != 1 {
 		t.Errorf("subnet_list has %d entries, want 1", len(list.Subnets))
 	}
-	var blessed registrypb.BlessedReplicaVersions
-	if err := proto.Unmarshal(byKey["blessed_replica_versions"], &blessed); err != nil {
-		t.Fatalf("unmarshal blessed_replica_versions: %v", err)
-	}
-	if !reflect.DeepEqual(blessed.BlessedVersionIds, []string{"deadbeef"}) {
-		t.Errorf("blessed = %v, want [deadbeef]", blessed.BlessedVersionIds)
+	// Election is now the replica_version_ record's existence, and the mirror
+	// supplies that one. The registry dropped the separate list, so seeding it
+	// would write a key the canister no longer knows.
+	if _, ok := byKey["blessed_replica_versions"]; ok {
+		t.Error("seeded blessed_replica_versions, which the registry no longer has")
 	}
 }
 

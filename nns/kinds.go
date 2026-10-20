@@ -56,7 +56,7 @@ var kinds = []kind{
 	{
 		Name:     "update_subnet",
 		Function: "update_subnet",
-		Doc:      "Nested in a proposal of kind \"update_subnet\": update_subnet (UPDATE_CONFIG_OF_SUBNET). Changes a subnet's configuration record. Every field is optional and an omitted one is left untouched on-chain, so a proposal changes exactly what it declares. Preflight diffs every declared field against the current record. Two payload fields are not settings here: subnet_type, which the registry asserts is unchanged, and a sev_enabled change, which it rejects outright.",
+		Doc:      "Nested in a proposal of kind \"update_subnet\": update_subnet (UPDATE_CONFIG_OF_SUBNET). Changes a subnet's configuration record. Every field is optional and an omitted one is left untouched on-chain, so a proposal changes exactly what it declares. Preflight diffs every declared field against the current record. Two payload fields are not ordinary settings here: subnet_type, which the registry asserts is unchanged, and sev_enabled, which the registry refuses to turn off.",
 		Since:    "v0.5.0",
 		Body:     updateSubnetBody{},
 		Action:   UpdateSubnetAction{},

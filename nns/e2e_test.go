@@ -356,11 +356,12 @@ func TestUpdateSubnetExecutesAgainstSeededSubnet(t *testing.T) {
 		t.Errorf("halting an already-halted subnet should be NoOp, got %v\n%s", pf.Level, pf.Report)
 	}
 
-	// Same instance, third proposal: the change the registry refuses outright.
-	// The seeded subnet has no features record, so sev_enabled reads false and
-	// asking for true is the rejected transition. It must end in Failed. That is
-	// the post-adoption trap the dry-run surfaces, and the reason a proposal that
-	// looks well-formed cannot be trusted without one.
+	// Same instance, third proposal: a change that executes and then traps on an
+	// invariant. The registry allows enabling SEV, but check_sev_subnet_invariants
+	// then requires every node to carry a chip ID, and the seeded nodes have none.
+	// It must end in Failed. That is the post-adoption trap the dry-run surfaces,
+	// and the reason a proposal that looks well-formed cannot be trusted without
+	// one.
 	on := SubnetFeatureSet{SevEnabled: true}
 	pid, err = n.SubmitAs(n.Proposer, neuron, UpdateSubnetAction{
 		Meta:     Meta{Title: "enable sev", Summary: "e2e"},
@@ -374,7 +375,7 @@ func TestUpdateSubnetExecutesAgainstSeededSubnet(t *testing.T) {
 	if pi.Status != proposalFailed {
 		t.Fatalf("enabling sev_enabled reached status %d; the registry was expected to reject it", pi.Status)
 	}
-	if pi.FailureReason == nil || !strings.Contains(pi.FailureReason.ErrorMessage, "sev_enabled") {
+	if pi.FailureReason == nil || !strings.Contains(pi.FailureReason.ErrorMessage, "chip ID") {
 		t.Errorf("execution failed for the wrong reason: %+v", pi.FailureReason)
 	}
 }

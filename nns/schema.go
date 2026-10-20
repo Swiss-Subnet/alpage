@@ -216,7 +216,7 @@ var SchemaFieldDocs = map[string]string{
 
 	"subnetFeaturesBody.canister_sandboxing": "Whether canister execution happens in a sandboxed process. Disabled by default.",
 	"subnetFeaturesBody.http_requests":       "Whether canisters on the subnet may perform outbound HTTP(S) requests.",
-	"subnetFeaturesBody.sev_enabled":         "Whether the subnet runs with SEV-SNP enabled. Required because the features record is replaced wholesale, but it cannot be changed: the registry only accepts sev_enabled as it was set when the subnet was created, and traps on any change after the proposal is adopted. State the subnet's current value; preflight and the dry-run both reject anything else.",
+	"subnetFeaturesBody.sev_enabled":         "Whether the subnet runs with SEV-SNP enabled. Required because the features record is replaced wholesale, which is also the trap: omitting it reads as disabling SEV, and the registry refuses to disable it. Enabling it is allowed, but execution traps unless every node already carries a chip_id and the subnet's GuestOS version has launch measurements. Preflight blocks a disable and warns on an enable.",
 
 	"resourceLimitsBody.maximum_state_size":  "Maximum subnet state size in bytes.",
 	"resourceLimitsBody.maximum_state_delta": "Maximum subnet state delta in bytes.",

@@ -212,9 +212,11 @@ func TestPlanUpdateSubnetGradesChangesAgainstCurrentState(t *testing.T) {
 	}
 }
 
-// A features block that flips sev_enabled cannot execute: the registry panics
-// after the proposal is adopted. Preflight has to name it before the vote.
-func TestPlanUpdateSubnetBlocksSevChange(t *testing.T) {
+// Turning sev_enabled off cannot execute: validate_sev_is_not_disabled panics
+// after the proposal is adopted. Preflight has to name it before the vote. The
+// trap is easy to walk into because features is replaced wholesale, so simply
+// omitting sev_enabled reads as disabling it.
+func TestPlanUpdateSubnetBlocksSevDisable(t *testing.T) {
 	cur := currentSubnet()
 	off := SubnetFeatureSet{CanisterSandboxing: true, HTTPRequests: true, SevEnabled: false}
 
@@ -230,6 +232,23 @@ func TestPlanUpdateSubnetBlocksSevChange(t *testing.T) {
 	on := SubnetFeatureSet{CanisterSandboxing: true, HTTPRequests: true, SevEnabled: true}
 	if planUpdateSubnet("sn", SubnetSettings{Features: &on}, cur).HasBlocking() {
 		t.Error("restating sev_enabled unchanged must be allowed; it is how the other features are updated")
+	}
+}
+
+// Enabling SEV is permitted, so it must not block. It still traps at execution
+// unless the nodes carry chip IDs, which the operator has to know before voting
+// rather than after.
+func TestPlanUpdateSubnetAllowsSevEnableWithWarning(t *testing.T) {
+	cur := currentSubnet()
+	cur.Features = &SubnetFeatureSet{CanisterSandboxing: true, HTTPRequests: true, SevEnabled: false}
+	on := SubnetFeatureSet{CanisterSandboxing: true, HTTPRequests: true, SevEnabled: true}
+
+	p := planUpdateSubnet("sn", SubnetSettings{Features: &on}, cur)
+	if p.HasBlocking() {
+		t.Error("enabling sev_enabled is allowed by the registry and must not block")
+	}
+	if report := p.Render(); !strings.Contains(report, "chip_id") {
+		t.Errorf("report should warn about the chip_id requirement:\n%s", report)
 	}
 }
 

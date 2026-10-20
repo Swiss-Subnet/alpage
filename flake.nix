@@ -17,10 +17,10 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        icReleaseTag = "release-2026-07-23_04-21-base";
-        icReleaseCommit = "1153c70d98a51ec2f023be9b3ce1d50c6b67da21";
+        icReleaseTag = "release-2026-10-16_03-29-base";
+        icReleaseCommit = "661a9806c9eef7106475c396e6348fba63e74066";
 
-        icCanistersTarHash = "sha256-PQdMyVOf6AGKssz7FsGUnOnvVooaCEkdGwj10sQ5NAQ=";
+        icCanistersTarHash = "sha256-ZIAz2hQXj+oRkEY4O3gCxtCpb1PD8i0GlQJCxLn1gkw=";
 
         # alp version: read from nns/version.go, the same string the release
         # workflow asserts against the tag. Not from self.ref, which a
@@ -36,9 +36,9 @@
         # Fixed-output hashes for the codegen derivations and the Go vendor tree.
         # Set to fakeHash and run `nix build` to learn the real values, then
         # paste them back. Rehash when the IC release (flake pins) or deps move.
-        genBindingsHash = "sha256-GNH1zK9sjdyHupYWMQ9nCOfkqtqd9sk6xM4MckWcvsY=";
-        genProtoHash = "sha256-KKQcDYVeVBJGQK+r286QxhEXx8wtizeuJi9mKGG6tTo=";
-        alpVendorHash = "sha256-v/XCV+RQTqPNDHcK2tcj8G2kMIv4R22cqkSTaLWmIIQ=";
+        genBindingsHash = "sha256-xlHOhNnv7lYWnHMyI1ucU2GiGQ849EQi/uFX7ZPfiqc=";
+        genProtoHash = "sha256-RN8rWv91ujHc3P2ZJaxlRWS7j8XuxWLeoiFJzXnpcmY=";
+        alpVendorHash = "sha256-Gf6nXUxR5rp9EAHHuq2iIax5UJyMF7gfmr4I1aYshlU=";
         siteNpmDepsHash = "sha256-qXcEt1n1jtucPf8YGAMWJ7+tkCMKVpcDzgLAumLVsEQ=";
 
         pocketIcPlatform =
@@ -54,48 +54,11 @@
         # "arm64-*" (see pocketIcPlatform). Every entry moves on an IC release
         # bump, not just the one this machine builds.
         pocketIcHashes = {
-          "x86_64-linux" = "sha256-gXUoRe+PwDre/DjSKxXCCHJf3mnPrTMsH5i/+e6zK9o=";
-          "aarch64-linux" = "sha256-IWb4hqjaYqwHqkqVJ7Uc6giEMERIh56WR8joSqqJWzk=";
-          "x86_64-darwin" = "sha256-qnos63K+ppGqZmzx5YxbIGMQIXSMWQoUwJUQhfxXhWU=";
-          "aarch64-darwin" = "sha256-nAAoSlyJJJohul1pC1a68o5Y2hQtL/7xjdIUu5LTG74=";
+          "x86_64-linux" = "sha256-59mkz5wCEayrVfcGYBhectgIfswDZYDGO9F4mgSDQcs=";
+          "aarch64-linux" = "sha256-J8zt1T/EgjoYBgNuMifqycLjCIOYhiLMKTWZM4JUCxc=";
+          "x86_64-darwin" = "sha256-PqizlHOrHNit2bDjOfdMHBrBGy7H+NZ1br6TtZKn3Hk=";
+          "aarch64-darwin" = "sha256-MzKQNyU98vw++kBLE2uv2TeKdZqqk2/bjLLH0Je/4As=";
         };
-
-        # The release's canisters.tar carries only a 17-canister subset of the
-        # full published set (see the CANISTERS array in the ic repo's
-        # .github/workflows/tag-release.yml). Canisters outside that subset are
-        # still published per-commit to the CDN, so fetch them individually and
-        # merge them into the same directory.
-        cdnCanisters = {
-          "engine-controller-canister" = {
-            wasm = "sha256-ruuXPRVe6wQKTXqgPaXT+r9lhGissoHjFkWhSWLz9I8=";
-            did = "sha256-5EsaF3//XyQ94WSzOxs+0hoDs5eNtMUo0Kwxgq1JUuE=";
-          };
-        };
-
-        cdnCanisterFiles = pkgs.lib.concatLists (
-          pkgs.lib.mapAttrsToList (
-            name: hashes:
-            map
-              (ext: {
-                inherit name;
-                filename = "${name}.wasm.gz${ext.suffix}";
-                file = pkgs.fetchurl {
-                  url = "https://download.dfinity.systems/ic/${icReleaseCommit}/canisters/${name}.wasm.gz${ext.suffix}";
-                  hash = ext.hash;
-                };
-              })
-              [
-                {
-                  suffix = "";
-                  hash = hashes.wasm;
-                }
-                {
-                  suffix = ".did";
-                  hash = hashes.did;
-                }
-              ]
-          ) cdnCanisters
-        );
 
         icCanisters = pkgs.stdenv.mkDerivation {
           pname = "ic-canisters";
@@ -109,10 +72,7 @@
           installPhase = ''
             mkdir -p $out
             cp *.wasm.gz *.did $out/
-          ''
-          + pkgs.lib.concatMapStrings (c: ''
-            cp ${c.file} $out/${c.filename}
-          '') cdnCanisterFiles;
+          '';
         };
 
         pocketIc = pkgs.stdenv.mkDerivation {
@@ -126,8 +86,8 @@
           nativeBuildInputs = [
             pkgs.gzip
           ]
-          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.autoPatchelfHook ];
-          buildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
+          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.stdenv.cc.cc.lib
           ];
           installPhase = ''
@@ -261,7 +221,7 @@
 
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.go_1_25
+            pkgs.go
             pkgs.gopls
             pkgs.nixfmt
             pkgs.protobuf
@@ -269,6 +229,9 @@
             pkgs.nodejs_24
             pocketIc
           ];
+
+          # Fail on a Go older than go.mod wants, instead of downloading one.
+          GOTOOLCHAIN = "local";
 
           POCKET_IC_BIN = "${pocketIc}/bin/pocket-ic";
           IC_CANISTERS_DIR = "${icCanisters}";
