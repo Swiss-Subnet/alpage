@@ -128,7 +128,8 @@ type AddNodeProviderAction struct {
 	Meta
 	ProviderID principal.Principal
 	// RewardAccount is the 32 raw bytes of the ledger account identifier. Nil
-	// leaves it unset until a later UpdateNodeProvider supplies one.
+	// leaves it unset, which pays rewards to the default account of the
+	// provider principal.
 	RewardAccount []byte
 }
 
@@ -191,9 +192,7 @@ func (a AddNodeProviderAction) Preflight(host string, fetchRootKey bool, opts ..
 		return Preflight{}, fmt.Errorf("list node providers: %w", err)
 	}
 	id := a.ProviderID.Encode()
-	return preconditionPreflight(planAddNodeProvider(
-		id, slices.Contains(providers, id), a.RewardAccount != nil,
-	)), nil
+	return preconditionPreflight(planAddNodeProvider(id, slices.Contains(providers, id))), nil
 }
 
 func (a AddNodeProviderAction) RenderPayload(b *strings.Builder, blob []byte) {
@@ -210,7 +209,8 @@ func (a AddNodeProviderAction) RenderPayload(b *strings.Builder, blob []byte) {
 	if ra := c.ToAdd.RewardAccount; ra != nil {
 		fmt.Fprintf(b, "          reward_account: %x\n", ra.Hash)
 	} else {
-		fmt.Fprintf(b, "          reward_account: <unset>\n")
+		acct := principal.NewAccountID(*c.ToAdd.Id, principal.DefaultSubAccount)
+		fmt.Fprintf(b, "          reward_account: unset, so rewards go to the principal's default account %s\n", acct.Encode())
 	}
 }
 

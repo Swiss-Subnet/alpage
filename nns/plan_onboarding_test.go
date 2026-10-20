@@ -60,21 +60,18 @@ func TestPlanAddDataCentersCleanWhenNew(t *testing.T) {
 
 // Governance rejects ToAdd for a principal already on the provider list.
 func TestPlanAddNodeProviderBlocksDuplicate(t *testing.T) {
-	p := planAddNodeProvider("np-1", true, true)
+	p := planAddNodeProvider("np-1", true)
 	if !p.HasBlocking() {
 		t.Error("an already-registered provider must block")
 	}
 }
 
-// A provider with no reward account is registered successfully and earns
-// nothing, so it is reported without blocking.
-func TestPlanAddNodeProviderNotesMissingRewardAccount(t *testing.T) {
-	p := planAddNodeProvider("np-1", false, false)
-	if p.HasBlocking() {
-		t.Error("a missing reward account does not stop the proposal")
-	}
-	if len(p.Issues) != 1 {
-		t.Fatalf("expected the missing reward account to be reported, got %+v", p.Issues)
+// Governance pays a provider with no reward_account into the default account of
+// its principal, so the omission is not worth reporting.
+func TestPlanAddNodeProviderAcceptsMissingRewardAccount(t *testing.T) {
+	p := planAddNodeProvider("np-1", false)
+	if preconditionPreflight(p).Level != PreflightClean {
+		t.Errorf("a provider with no reward account must preflight clean, got %+v", p.Issues)
 	}
 }
 

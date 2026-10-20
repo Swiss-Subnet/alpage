@@ -41,21 +41,16 @@ func planAddDataCenters(specs []DataCenterSpec, current map[string]DataCenterSpe
 }
 
 // planAddNodeProvider checks what governance validates before the vote: ToAdd
-// is rejected outright for a principal already on the provider list.
-func planAddNodeProvider(providerID string, registered, hasRewardAccount bool) PreconditionPlan {
+// is rejected outright for a principal already on the provider list. An absent
+// reward_account is not an issue. get_node_provider_reward falls back to the
+// default ledger account of the provider principal.
+func planAddNodeProvider(providerID string, registered bool) PreconditionPlan {
 	p := PreconditionPlan{Kind: "add_node_provider", Targets: []string{providerID}}
 	if registered {
 		p.Issues = append(p.Issues, PreconditionIssue{
 			Target:   providerID,
 			Detail:   "already a registered node provider, so governance would reject the proposal",
 			Blocking: true,
-		})
-		return p
-	}
-	if !hasRewardAccount {
-		p.Issues = append(p.Issues, PreconditionIssue{
-			Target: providerID,
-			Detail: "no reward_account declared, so rewards have nowhere to go until a later UpdateNodeProvider sets one",
 		})
 	}
 	return p

@@ -182,7 +182,7 @@ This page documents the current development schema, ahead of the latest release.
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
 | `node_provider_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the node provider to register (`node_provider.<name>.id`). Governance rejects a principal it already knows. |
-| `reward_account` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Ledger account identifier rewards are paid to, as 64 hex characters. Optional, but a provider registered without one earns nothing until a later UpdateNodeProvider supplies it, so preflight reports the omission. Governance validates the embedded checksum, so alpage rejects a malformed one when the config loads. |
+| `reward_account` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Ledger account identifier rewards are paid to, as 64 hex characters. Optional: governance pays a provider with no reward_account into the default account of the provider principal, and a later UpdateNodeProvider can redirect the rewards. Governance validates the embedded checksum, so alpage rejects a malformed one when the config loads. |
 
 ### `add_node_operator { }`
 

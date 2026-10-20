@@ -173,6 +173,24 @@ proposal "p" {
 	}
 }
 
+// With no reward_account in the payload, governance pays the default account
+// of the provider principal, so the rendered payload names that account rather
+// than calling the rewards undeliverable.
+func TestAddNodeProviderRendersDefaultRewardAccount(t *testing.T) {
+	id := mintPrincipal("reward account fixture")
+	a := AddNodeProviderAction{Meta: Meta{Title: "Add"}, ProviderID: id}
+	blob, err := a.PayloadBlob()
+	if err != nil {
+		t.Fatalf("payload: %v", err)
+	}
+	var b strings.Builder
+	a.RenderPayload(&b, blob)
+	want := principal.NewAccountID(id, principal.DefaultSubAccount).Encode()
+	if !strings.Contains(b.String(), want) {
+		t.Errorf("rendered payload should name the default account %s, got:\n%s", want, b.String())
+	}
+}
+
 // The canister stores coordinates without range-checking them, so a transposed
 // pair would be accepted on-chain. Rejected at load instead.
 func TestAddDataCentersRejectsOutOfRangeGPS(t *testing.T) {

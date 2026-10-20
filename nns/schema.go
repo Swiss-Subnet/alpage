@@ -186,7 +186,7 @@ var SchemaFieldDocs = map[string]string{
 	"gpsBody.longitude": "Longitude in decimal degrees, between -180 and 180.",
 
 	"addNodeProviderBody.node_provider_id": "Principal of the node provider to register (node_provider.<name>.id). Governance rejects a principal it already knows.",
-	"addNodeProviderBody.reward_account":   "Ledger account identifier rewards are paid to, as 64 hex characters. Optional, but a provider registered without one earns nothing until a later UpdateNodeProvider supplies it, so preflight reports the omission. Governance validates the embedded checksum, so alpage rejects a malformed one when the config loads.",
+	"addNodeProviderBody.reward_account":   "Ledger account identifier rewards are paid to, as 64 hex characters. Optional: governance pays a provider with no reward_account into the default account of the provider principal, and a later UpdateNodeProvider can redirect the rewards. Governance validates the embedded checksum, so alpage rejects a malformed one when the config loads.",
 
 	"addNodeOperatorBody.node_operator_id":     "Principal of the node operator to register (node_operator.<name>.id). The operator signs add_node with this identity, so it must be a principal they hold the key for.",
 	"addNodeOperatorBody.node_provider_id":     "Principal of the provider this operator belongs to (node_provider.<name>.id). Governance rejects the proposal at submission when the provider is not registered, so the add_node_provider proposal has to land first.",
