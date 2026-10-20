@@ -80,6 +80,21 @@ nix develop --command go build ./...
 nix develop --command go test ./...
 ```
 
+Which IC release that is lives in one `defaultIcRelease` attrset: the tag, the commit, and the five hashes that move with them. A downstream flake can build the same outputs against a different release without forking this one, which is how you try a dry-run against a newer registry canister before alpage pins it:
+
+```nix
+alpage.legacyPackages.${system}.withIcRelease {
+  tag = "release-YYYY-MM-DD_HH-MM-base";
+  commit = "...";
+  canistersTarHash = "...";
+  pocketIcHashes = { ... };
+  genBindingsHash = "...";
+  genProtoHash = "...";
+}
+```
+
+Anything left out keeps the default, so a partial override fails on a hash mismatch rather than quietly building the old release. Nix prints each expected hash as it fails.
+
 Golden dry-run tests regenerate with `-update`:
 
 ```
