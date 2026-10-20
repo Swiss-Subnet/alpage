@@ -133,11 +133,25 @@ func (vr NodeVersionReconcile) Table() Table {
 			Name:   row.Name,
 			ID:     row.NodeID,
 			Detail: detail,
+			Remedy: remedyOf(row),
 			OK:     row.Status != NodeVersionMismatch,
 			Color:  row.Status.color(),
 		})
 	}
 	return t
+}
+
+// remedy names what clears a version mismatch. An unelected declaration is the
+// more urgent of the two, since no proposal can deploy it at all, so it takes
+// precedence over the ordinary rollout advice.
+func (row NodeVersionRow) remedy() string {
+	if row.Status != NodeVersionMismatch {
+		return ""
+	}
+	if row.Unelected {
+		return "the declared version is not elected, so no proposal can deploy it. Point the declaration at an elected version"
+	}
+	return "roll the subnet forward with a deploy_guestos proposal, or correct the node's guestos_version"
 }
 
 func (vr NodeVersionReconcile) HasDrift() bool { return vr.Table().HasDrift() }

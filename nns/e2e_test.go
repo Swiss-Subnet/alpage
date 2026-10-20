@@ -38,6 +38,13 @@ func startNNSSeeded(t *testing.T, hotkey principal.Principal, seeds []SubnetSeed
 
 func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds []SubnetSeed, providers []ProviderSeed, live bool) (*NNS, *pocketic.Client, string) {
 	t.Helper()
+	return startNNSWith(t, hotkey, DryRunState{Subnets: seeds, Providers: providers}, live)
+}
+
+// startNNSWith brings the NNS up from a DryRunState, the same value a kind's
+// DryRunSeeds returns, so a test can plant exactly what apply would.
+func startNNSWith(t *testing.T, hotkey principal.Principal, state DryRunState, live bool) (*NNS, *pocketic.Client, string) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping PocketIC-backed test in -short mode")
 	}
@@ -53,7 +60,12 @@ func startNNSSeededWithProviders(t *testing.T, hotkey principal.Principal, seeds
 	if err != nil {
 		t.Fatalf("instance: %v", err)
 	}
-	n, err := BringUpWithSubnetsAndProviders(c, inst, testController(), hotkey, seeds, providers)
+	n, err := BringUpWith(c, inst, testController(), BringUpOptions{
+		Hotkey:      hotkey,
+		Subnets:     state.Subnets,
+		Providers:   state.Providers,
+		DataCenters: state.DataCenters,
+	})
 	if err != nil {
 		t.Fatalf("bring up: %v", err)
 	}

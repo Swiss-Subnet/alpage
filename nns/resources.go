@@ -370,6 +370,25 @@ func setVar[T namedResource](ctx *hcl.EvalContext, name string, rs []T) {
 	}
 }
 
+// setDCVar exports data centers with a region attribute on top of the usual id
+// and label, so an add_data_centers proposal can name the region the
+// data_center block already declares instead of restating it where the two can
+// drift apart.
+func setDCVar(ctx *hcl.EvalContext, dcs []DataCenter) {
+	if len(dcs) == 0 {
+		return
+	}
+	out := make(map[string]cty.Value, len(dcs))
+	for _, dc := range dcs {
+		out[dc.Name] = cty.ObjectVal(map[string]cty.Value{
+			"id":     cty.StringVal(dc.ID),
+			"label":  cty.StringVal(dc.Label),
+			"region": cty.StringVal(dc.Region),
+		})
+	}
+	ctx.Variables["data_center"] = cty.ObjectVal(out)
+}
+
 // resourceKinds are the block types carrying a name label, in the order they
 // are reported.
 var resourceKinds = []string{"subnet", "node", "node_provider", "node_operator", "data_center", "guestos_version"}
@@ -458,7 +477,7 @@ func (r *Resources) EvalContext() *hcl.EvalContext {
 	setVar(ctx, "subnet", r.Subnets)
 	setVar(ctx, "node_provider", r.Providers)
 	setVar(ctx, "node_operator", r.Operators)
-	setVar(ctx, "data_center", r.DCs)
+	setDCVar(ctx, r.DCs)
 	// Exported so a deploy_guestos proposal can name a version the same way
 	// nodes do, rather than repeating the hash.
 	setVar(ctx, "guestos_version", r.Versions)

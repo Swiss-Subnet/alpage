@@ -76,7 +76,7 @@ func (r RemoveNodesAction) Preflight(host string, fetchRootKey bool, opts ...Fet
 		}
 		registered[ids[i]] = st.Registered
 	}
-	return removalPreflight(planRemoveNodes(ids, inSubnet, registered)), nil
+	return preconditionPreflight(planRemoveNodes(ids, inSubnet, registered)), nil
 }
 
 func (r RemoveNodesAction) RenderPayload(b *strings.Builder, blob []byte) {
@@ -153,7 +153,7 @@ func (r RemoveNodeOperatorsAction) Preflight(host string, fetchRootKey bool, opt
 		// operator with no nodes reads; treat a successful lookup as known.
 		known[ids[i]] = true
 	}
-	return removalPreflight(planRemoveNodeOperators(ids, owned, known)), nil
+	return preconditionPreflight(planRemoveNodeOperators(ids, owned, known)), nil
 }
 
 func (r RemoveNodeOperatorsAction) RenderPayload(b *strings.Builder, blob []byte) {
@@ -221,7 +221,7 @@ func (r RemoveNodeProviderAction) ProposalAction() (*governance.ProposalActionRe
 // mutations triggers the invariant battery, which requires subnet_list, an
 // elected replica version, and a system subnet. Provider mutations alone trap
 // with "no system subnet".
-func (r RemoveNodeProviderAction) DryRunSeeds(mainnetProviders []string) ([]ProviderSeed, []SubnetSeed) {
+func (r RemoveNodeProviderAction) DryRunSeeds(mainnetProviders []string) DryRunState {
 	want := r.ProviderID.Encode()
 	for _, p := range mainnetProviders {
 		if p != want {
@@ -230,25 +230,25 @@ func (r RemoveNodeProviderAction) DryRunSeeds(mainnetProviders []string) ([]Prov
 		// The registry half of the provider seed is required even for a
 		// governance-only check: seedProviderMutations joins an operator to a DC
 		// record, and an incomplete pair fails the registry's invariants.
-		provider := []ProviderSeed{{
+		state := DryRunState{Providers: []ProviderSeed{{
 			ProviderID: want,
 			OperatorID: dryRunSeedOperator,
 			DcID:       dryRunSeedDC,
 			DcRegion:   dryRunSeedRegion,
-		}}
+		}}}
 		// Decode, not MustDecode: a bad constant must not panic the CLI mid-apply.
 		sid, err := principal.Decode(dryRunSeedSubnet)
 		if err != nil {
-			return provider, nil
+			return state
 		}
-		subnet := []SubnetSeed{{
+		state.Subnets = []SubnetSeed{{
 			SubnetID:       sid,
 			NumNodes:       1,
 			ReplicaVersion: dryRunSeedVersion,
 		}}
-		return provider, subnet
+		return state
 	}
-	return nil, nil
+	return DryRunState{}
 }
 
 // Placeholder registry identifiers for the dry-run seed. The provider id is the
@@ -278,7 +278,7 @@ func (r RemoveNodeProviderAction) Preflight(host string, fetchRootKey bool, opts
 	// back empty, which is indistinguishable from a provider with no operators.
 	// Governance rejects the unknown case at validation, so the check that adds
 	// information here is the orphaned-operator one.
-	return removalPreflight(planRemoveNodeProvider(r.ProviderID.Encode(), true, ids)), nil
+	return preconditionPreflight(planRemoveNodeProvider(r.ProviderID.Encode(), true, ids)), nil
 }
 
 func (r RemoveNodeProviderAction) RenderPayload(b *strings.Builder, blob []byte) {

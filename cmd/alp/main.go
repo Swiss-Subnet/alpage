@@ -489,12 +489,17 @@ func plan(argv []string) error {
 // states are persisted back to the state file (--no-record to skip) so the
 // offline commands can reason about terminal proposals; the write is monotonic,
 // never clearing or overwriting a state already known to be terminal.
+//
+// A proposal that has settled is reported from that record rather than queried
+// again, so the run only pays for the proposals that can still move. --refresh
+// queries everything, for the case where the recorded outcome is suspect.
 func status(argv []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	config := fs.String("config", nns.DefaultConfigPath, "path to the proposals HCL config")
 	statePath := fs.String("state", nns.DefaultStatePath, "path to the consolidated state file")
 	host := fs.String("host", "", "IC host to query (overrides provider block)")
 	noRecord := fs.Bool("no-record", false, "do not persist observed lifecycle state back to the state file")
+	refresh := fs.Bool("refresh", false, "re-query proposals already settled, instead of reporting them from state")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -514,6 +519,14 @@ func status(argv []string) error {
 			fmt.Printf("%-24s  not submitted\n", s.Name)
 			continue
 		}
+		// A settled proposal cannot change on-chain, so querying it again costs
+		// one round trip per run and returns what state already holds. The
+		// fleet only grows, so this is the difference between a constant cost
+		// and one that climbs with every proposal ever submitted.
+		if settled := nns.SettledStatus(entry); settled != nil && !*refresh {
+			fmt.Println(nns.StatusLine(s.Name, entry, settled))
+			continue
+		}
 		ps, err := nns.FetchProposalStatus(effHost, fetchRootKey, entry.ProposalID)
 		if err != nil {
 			fmt.Printf("%-24s  proposal %d  status query failed: %v\n", s.Name, entry.ProposalID, err)
@@ -523,6 +536,7 @@ func status(argv []string) error {
 		if ps != nil {
 			changed = st.RecordState(s.Name, ps.State, ps.ResolvedAt) || changed
 			changed = st.RecordSubmittedAt(s.Name, ps.SubmittedAt) || changed
+			changed = st.RecordOutcome(s.Name, ps.State, ps.Outcome()) || changed
 		}
 	}
 	if changed && !*noRecord {
@@ -592,6 +606,19 @@ func reconcile(argv []string) error {
 		if err != nil {
 			return err
 		}
+	}
+	if len(cfg.Resources.DCs) > 0 {
+		ids := make([]string, 0, len(cfg.Resources.DCs))
+		for _, dc := range cfg.Resources.DCs {
+			ids = append(ids, dc.ID)
+		}
+		onChain, err := nns.FetchDataCenters(effHost, fetchRootKey, ids)
+		if err != nil {
+			return fmt.Errorf("fetch data centers: %w", err)
+		}
+		dr := nns.ReconcileDataCenters(cfg.Resources, onChain)
+		dr.Render(&b)
+		drift = drift || dr.HasDrift()
 	}
 	if len(cfg.Resources.Providers) > 0 {
 		byProvider, err := providerOperators(cfg.Resources, effHost, fetchRootKey)
@@ -915,13 +942,13 @@ func resolveDryRunArtifacts(offline bool) (nns.Artifacts, error) {
 	return art, nil
 }
 
-// dryRunProviderSeeds asks the action what governance state its local
-// validation needs, resolving it from mainnet. A kind that implements no seeding
-// gets an empty set and the same bare NNS as before.
-func dryRunProviderSeeds(action nns.Action, host string, fetchRootKey bool) ([]nns.ProviderSeed, []nns.SubnetSeed, error) {
+// dryRunSeeds asks the action what local state its validation needs, resolving
+// the mainnet half from the network. A kind that implements no seeding gets an
+// empty set and the same bare NNS as before.
+func dryRunSeeds(action nns.Action, host string, fetchRootKey bool) (nns.DryRunState, error) {
 	seeder, ok := action.(nns.DryRunSeeder)
 	if !ok {
-		return nil, nil, nil
+		return nns.DryRunState{}, nil
 	}
 	var opts []nns.FetchOption
 	if fetchRootKey {
@@ -929,10 +956,9 @@ func dryRunProviderSeeds(action nns.Action, host string, fetchRootKey bool) ([]n
 	}
 	providers, err := nns.FetchNodeProviders(host, fetchRootKey, opts...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("list mainnet node providers: %w", err)
+		return nns.DryRunState{}, fmt.Errorf("list mainnet node providers: %w", err)
 	}
-	provSeeds, subnetSeeds := seeder.DryRunSeeds(providers)
-	return provSeeds, subnetSeeds, nil
+	return seeder.DryRunSeeds(providers), nil
 }
 
 // dryRunMirror copies the registry records the action's payload dereferences
@@ -969,7 +995,7 @@ func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) err
 	if err != nil {
 		return err
 	}
-	provSeeds, subnetSeeds, err := dryRunProviderSeeds(action, host, fetchRootKey)
+	seeds, err := dryRunSeeds(action, host, fetchRootKey)
 	if err != nil {
 		return err
 	}
@@ -977,7 +1003,7 @@ func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) err
 	if err != nil {
 		return err
 	}
-	subnetSeeds = append(subnetSeeds, mirrorSeeds...)
+	seeds.Subnets = append(seeds.Subnets, mirrorSeeds...)
 	c, err := pocketic.Start(art.PocketIC)
 	if err != nil {
 		return err
@@ -992,9 +1018,10 @@ func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) err
 		return err
 	}
 	n, err := nns.BringUpWith(c, inst, local.Principal(), nns.BringUpOptions{
-		Subnets:   subnetSeeds,
-		Providers: provSeeds,
-		Mirror:    mirror,
+		Subnets:     seeds.Subnets,
+		Providers:   seeds.Providers,
+		DataCenters: seeds.DataCenters,
+		Mirror:      mirror,
 	})
 	if err != nil {
 		return err

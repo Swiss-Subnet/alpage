@@ -37,6 +37,36 @@ type removeNodeProviderBody struct {
 	NodeProviderID string `hcl:"node_provider_id"`
 }
 
+type addDataCentersBody struct {
+	DataCenters []dataCenterBody `hcl:"dc,block"`
+}
+
+type dataCenterBody struct {
+	ID     string   `hcl:"id"`
+	Region string   `hcl:"region"`
+	Owner  string   `hcl:"owner"`
+	GPS    *gpsBody `hcl:"gps,block"`
+}
+
+type gpsBody struct {
+	Latitude  float64 `hcl:"latitude"`
+	Longitude float64 `hcl:"longitude"`
+}
+
+type addNodeProviderBody struct {
+	NodeProviderID string `hcl:"node_provider_id"`
+	RewardAccount  string `hcl:"reward_account,optional"`
+}
+
+type addNodeOperatorBody struct {
+	NodeOperatorID     string            `hcl:"node_operator_id"`
+	NodeProviderID     string            `hcl:"node_provider_id"`
+	DcID               string            `hcl:"dc_id"`
+	NodeAllowance      uint64            `hcl:"node_allowance,optional"`
+	IPv6               string            `hcl:"ipv6,optional"`
+	MaxRewardableNodes map[string]uint32 `hcl:"max_rewardable_nodes,optional"`
+}
+
 // updateSubnetBody mirrors the settings update_subnet can change. Every
 // top-level field is optional and a pointer, because the registry skips an unset
 // field rather than resetting it: nil has to mean "do not touch", which a bare

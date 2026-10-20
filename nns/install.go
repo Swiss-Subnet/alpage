@@ -54,10 +54,11 @@ func BringUpWithSubnetsAndProviders(c *pocketic.Client, inst int, controller, ho
 // mirror coexist, so a mirrored application subnet can rely on a seeded system
 // subnet to satisfy the init invariants.
 type BringUpOptions struct {
-	Hotkey    principal.Principal
-	Subnets   []SubnetSeed
-	Providers []ProviderSeed
-	Mirror    *Mirror
+	Hotkey      principal.Principal
+	Subnets     []SubnetSeed
+	Providers   []ProviderSeed
+	DataCenters []DataCenterSeed
+	Mirror      *Mirror
 }
 
 // BringUpWith is the full bring-up the other entry points delegate to.
@@ -77,7 +78,7 @@ func BringUpWith(c *pocketic.Client, inst int, controller principal.Principal, o
 	if err != nil {
 		return nil, fmt.Errorf("encode governance init: %w", err)
 	}
-	regArg, members, err := minimalRegistryInit(seeds, providers, opts.Mirror)
+	regArg, members, err := minimalRegistryInit(seeds, providers, opts.DataCenters, opts.Mirror)
 	if err != nil {
 		return nil, fmt.Errorf("encode registry init: %w", err)
 	}
@@ -132,7 +133,7 @@ type registryMutation struct {
 	Value        []byte `ic:"value" json:"value"`
 }
 
-func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed, mirror *Mirror) ([]byte, map[string][]principal.Principal, error) {
+func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed, dcs []DataCenterSeed, mirror *Mirror) ([]byte, map[string][]principal.Principal, error) {
 	var mirroredSubnets []principal.Principal
 	var mirroredVersions []string
 	if mirror != nil {
@@ -147,6 +148,15 @@ func minimalRegistryInit(seeds []SubnetSeed, providers []ProviderSeed, mirror *M
 		return nil, nil, err
 	}
 	muts = append(muts, provMuts...)
+	taken := make(map[string]bool, len(muts))
+	for _, m := range muts {
+		taken[string(m.Key)] = true
+	}
+	dcMuts, err := seedDataCenterMutations(dcs, taken)
+	if err != nil {
+		return nil, nil, err
+	}
+	muts = append(muts, dcMuts...)
 	if mirror != nil {
 		// Mirror last, and it wins: a real record and a fabricated one for the
 		// same key would be two INSERTs, which the registry rejects, and the

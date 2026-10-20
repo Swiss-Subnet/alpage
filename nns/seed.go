@@ -48,6 +48,40 @@ type ProviderSeed struct {
 	DcRegion   string
 }
 
+// DataCenterSeed plants a data_center_record_ on its own, for a payload that
+// references a DC without creating one: the node-operator invariant rejects an
+// operator whose dc_id the registry does not have.
+type DataCenterSeed struct {
+	ID     string
+	Region string
+	Owner  string
+}
+
+// seedDataCenterMutations renders one data_center_record_ per seed, skipping a
+// DC a provider seed already wrote: two INSERTs on one key are rejected.
+func seedDataCenterMutations(seeds []DataCenterSeed, taken map[string]bool) ([]registryMutation, error) {
+	var muts []registryMutation
+	for _, s := range seeds {
+		key := "data_center_record_" + s.ID
+		if taken[key] {
+			continue
+		}
+		taken[key] = true
+		rec, err := proto.Marshal(&registrypb.DataCenterRecord{
+			Id: s.ID, Region: s.Region, Owner: s.Owner,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal data_center_record %s: %w", s.ID, err)
+		}
+		muts = append(muts, registryMutation{
+			Key:          []byte(key),
+			MutationType: mutationInsert,
+			Value:        rec,
+		})
+	}
+	return muts, nil
+}
+
 // seedProviderMutations renders node_operator_record_ and data_center_record_
 // entries for each provider seed. The query joins an operator's
 // node_provider_principal_id and dc_id to the requested provider and its DC

@@ -138,11 +138,31 @@ func (pr ProviderReconcile) Table() Table {
 			Name:   row.Name,
 			ID:     row.OperatorID,
 			Detail: detail,
+			Remedy: remedyOf(row.Status),
 			OK:     row.Status == OperatorOK || row.Status == OperatorDecommissioned,
 			Color:  row.Status.color(),
 		})
 	}
 	return t
+}
+
+// remedy names what clears each operator status. A dc change needs
+// update_node_operator_config, which alpage does not implement, so that one
+// says to correct the declaration rather than pointing at a kind that is not
+// there.
+func (s OperatorStatus) remedy() string {
+	switch s {
+	case OperatorDcMismatch:
+		return "correct the operator's dc in resources.hcl, since moving it on-chain needs update_node_operator_config and alpage has no kind for that"
+	case OperatorUnknown:
+		return "point the operator at the provider that owns it, or register it with an add_node_operator proposal"
+	case OperatorProviderUnchecked:
+		return "the declared provider was never queried, so check that its id is right"
+	case OperatorStillRegistered:
+		return "the removal has not landed, so submit a remove_node_operators proposal or drop the decommissioned marker"
+	default:
+		return ""
+	}
 }
 
 func (pr ProviderReconcile) HasDrift() bool { return pr.Table().HasDrift() }

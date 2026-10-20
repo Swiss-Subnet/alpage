@@ -18,7 +18,7 @@ The CLI is `alp`, built from `cmd/alp`.
 alp apply  <name> --identity <key.pem> [--neuron id] [--host url] [--yes] [--force]
 alp import <name> <proposal_id> --identity <key.pem> [--at RFC3339]
 alp list
-alp status [--host url]
+alp status [--host url] [--refresh]
 alp reconcile [--host url]
 alp registry subnet <subnet_id> [--host url]
 alp guestos sync [--set alias] [--variant base] [--out path]
@@ -27,8 +27,8 @@ alp guestos sync [--set alias] [--variant base] [--out path]
 - `apply` — check the `--identity` can submit from the neuron (fails fast on a wrong key), dry-run on PocketIC, then submit to the live network with `--yes` (type `submit` to confirm), then write state.
 - `import` — adopt an already-submitted proposal into state without submitting (Terraform's `import`).
 - `list` — show each declared proposal as in-sync, drifted, or not-submitted. Here "drift" means the committed config's payload no longer matches the payload recorded in state (an edit since submit); it does not reconcile against on-chain state.
-- `status` — read each recorded proposal back from live governance and show its actual on-chain status (open/adopted/rejected/executed/failed) with the current tally. This is the on-chain counterpart to `list`: `list` compares config against state, `status` compares state against the network. Governance purges older proposals; when a recorded id is no longer in governance, `status` falls back to the read-only ICP dashboard API and marks the line `[via ICP dashboard; purged from governance]`. A proposal in neither source is reported as unknown. Read-only.
-- `reconcile` — read-only diff of `resources.hcl` against live on-chain state: nodes vs subnet membership (`in-sync`/`missing`/`deregistered`/`unmanaged`), `node_operator`s vs their provider's on-chain ownership, and each node's declared operator vs its on-chain owner (an operator-owned node missing from `resources.hcl` is reported `unmanaged`). Exits nonzero on drift, so it works as a CI gate. Status fields are colorized on a TTY (honors `NO_COLOR`).
+- `status` — read each recorded proposal back from live governance and show its actual on-chain status (open/adopted/rejected/executed/failed) with the current tally. This is the on-chain counterpart to `list`: `list` compares config against state, `status` compares state against the network. Governance purges older proposals; when a recorded id is no longer in governance, `status` falls back to the read-only ICP dashboard API and marks the line `[via ICP dashboard; purged from governance]`. A proposal in neither source is reported as unknown. Read-only. A proposal that has settled (executed, rejected, or failed) is reported from state rather than queried again, since its result cannot change, so a run costs one query per proposal still in flight rather than one per proposal ever submitted. `--refresh` queries everything.
+- `reconcile` — read-only diff of `resources.hcl` against live on-chain state: nodes vs subnet membership (`in-sync`/`missing`/`deregistered`/`unmanaged`), `data_center`s vs their registry records (`ok`/`missing`/`region-mismatch`), `node_operator`s vs their provider's on-chain ownership, and each node's declared operator vs its on-chain owner (an operator-owned node missing from `resources.hcl` is reported `unmanaged`). Exits nonzero on drift, so it works as a CI gate. Status fields are colorized on a TTY (honors `NO_COLOR`). Every drift row ends in `fix: ...`, naming the proposal kind or the config edit that resolves it; rows that are in sync carry none.
 - `guestos sync` — regenerate `resources/guestos.hcl`, the catalogue of GuestOS versions the NNS currently has elected, so a new release never has to be transcribed by hand. The elected set is replayed from the dashboard's election proposals (elections and the unelections they carry). `--set <alias>` also repoints an existing `guestos_version` block at the newest elected release, editing it in place so its comments and its `default` marker survive and the new hash lands in the diff. `--variant` picks the release flavour (default `base`), since DFINITY elects several per release.
 - `registry subnet` — read-only query of the registry canister for a subnet's current node membership, emitted as a `resources.hcl` fragment (a `subnet` block plus one `node` block per member, sorted by id). Use it to seed or reconcile `resources.hcl` against on-chain state.
 
@@ -63,6 +63,11 @@ Each proposal has a `kind` and a matching nested block:
 - `remove_nodes` — `remove_nodes`: deregister nodes, freeing their operators' allowance.
 - `remove_node_operators` — `remove_node_operators`: delete node operator records.
 - `remove_node_provider` — a native `AddOrRemoveNodeProvider` governance action rather than an `ExecuteNnsFunction`: remove a node provider.
+- `add_data_centers` — `add_or_remove_data_centers`: register data center records. Adds only, since removal has preconditions of its own.
+- `add_node_provider` — the `ToAdd` half of `AddOrRemoveNodeProvider`, also a native governance action: register a node provider.
+- `add_node_operator` — `add_node_operator`, submitted as `ASSIGN_NOID`: register a node operator under a provider, in a data center, with an allowance of nodes it may register.
+
+The last three are what onboarding a node provider takes. The data center and the provider are independent of each other, so those two can go in either order or at once, and only the operator depends on both. Nothing in the payloads encodes that dependency, so the operator's preflight checks that its data center and its provider both landed. Registering the nodes themselves is not a proposal at all, since the operator calls `add_node` against the registry directly, spending the allowance the operator proposal granted.
 
 Adding a kind is a new `Action` implementation plus one decode case; state, dry-run, submit, and drift detection are kind-agnostic.
 

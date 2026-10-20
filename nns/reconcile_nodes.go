@@ -154,11 +154,31 @@ func (nr NodeOwnershipReconcile) Table() Table {
 			Name:   row.Name,
 			ID:     row.NodeID,
 			Detail: detail,
+			Remedy: remedyOf(row),
 			OK:     row.Status == NodeOwnershipOK || row.Status == NodeOwnershipDecommissioned,
 			Color:  row.Status.color(),
 		})
 	}
 	return t
+}
+
+// remedy reads the row rather than the status alone, because a mismatch on a
+// decommissioned node is a removal that has not landed, while a mismatch on a
+// live one is a wrong operator field.
+func (row NodeOwnershipRow) remedy() string {
+	switch row.Status {
+	case NodeOwnershipMismatch:
+		if row.Decommissioned || row.StillRegistered {
+			return "the removal has not landed, so submit a remove_nodes proposal or drop the decommissioned marker"
+		}
+		return "point the node's operator field at its on-chain owner, since alpage cannot move a node between operators"
+	case NodeOwnershipGone:
+		return "mark the node decommissioned if it was deregistered, or correct its operator field"
+	case NodeOwnershipUnmanaged:
+		return "declare a node block for it under that operator, or deregister it with a remove_nodes proposal"
+	default:
+		return ""
+	}
 }
 
 func (nr NodeOwnershipReconcile) HasDrift() bool { return nr.Table().HasDrift() }

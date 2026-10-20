@@ -27,6 +27,22 @@ type Entry struct {
 	// (RFC3339), taken from the chain's own timestamp rather than when alp
 	// happened to look.
 	ResolvedAt string `json:"resolved_at,omitempty"`
+	// Outcome caches what `alp status` prints for a terminal proposal. Recorded
+	// only once Status is terminal, which is the point at which the answer
+	// stops changing, so later runs render the same line without a query.
+	Outcome *Outcome `json:"outcome,omitempty"`
+}
+
+// Outcome is the settled result of a proposal: everything StatusLine needs
+// beyond the Entry itself. Written once and never updated, because a terminal
+// proposal's tally and failure reason are history.
+type Outcome struct {
+	Label   string `json:"label"`
+	Source  Source `json:"source"`
+	Yes     uint64 `json:"yes"`
+	No      uint64 `json:"no"`
+	Total   uint64 `json:"total"`
+	Failure string `json:"failure,omitempty"`
 }
 
 // State is the single consolidated state file (terraform.tfstate-style): one
@@ -175,6 +191,19 @@ func (s *State) RecordState(name string, st ProposalState, resolvedAt string) bo
 	if st.Terminal() {
 		e.ResolvedAt = resolvedAt
 	}
+	s.Proposals[name] = e
+	return true
+}
+
+// RecordOutcome caches a terminal proposal's rendered result, reporting whether
+// anything changed. A non-terminal status is ignored, since its tally is still
+// moving, and an outcome already recorded is never overwritten.
+func (s *State) RecordOutcome(name string, st ProposalState, o Outcome) bool {
+	e, ok := s.Proposals[name]
+	if !ok || !st.Terminal() || e.Outcome != nil {
+		return false
+	}
+	e.Outcome = &o
 	s.Proposals[name] = e
 	return true
 }

@@ -20,12 +20,13 @@ var goldenSubnetSeeds = []SubnetSeed{{
 	ReplicaVersion: "0000000000000000000000000000000000000001",
 }}
 
-var goldenProviderSeeds = []ProviderSeed{{
-	ProviderID: "dchi6-uidam-bqgay-dambq-gayda-mbqga-ydamb-qgayd-ambqg-aydam-bqg",
-	OperatorID: "hsi7b-rl4wt-lum3m-ophfi-oxgx5-u2q7r-ak7ag-nyiik-c4gam-epo2r-3qe",
-	DcID:       "dc1",
-	DcRegion:   "eu/ch/zurich",
-}}
+// goldenMainnetProviders stands in for the live provider list DryRunSeeds is
+// handed. It names the provider the remove fixture targets (so that one seeds
+// and reaches submission) and not the one the add fixture registers (so that
+// one is not rejected as a duplicate).
+var goldenMainnetProviders = []string{
+	"dchi6-uidam-bqgay-dambq-gayda-mbqga-ydamb-qgayd-ambqg-aydam-bqg",
+}
 
 // TestDryRunGolden brings up a local NNS, submits each proposal declared in the
 // repo config, and compares the rendered result against a committed golden file.
@@ -41,18 +42,18 @@ func TestDryRunGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("action: %v", err)
 			}
-			// remove_nodes needs a subnet list to exist at all, and the
-			// provider fixture additionally needs governance's own
-			// node-provider list seeded.
-			var providers []ProviderSeed
-			var seeds []SubnetSeed
-			switch spec.Kind {
-			case "remove_node_provider":
-				providers, seeds = goldenProviderSeeds, goldenSubnetSeeds
-			case "remove_nodes":
-				seeds = goldenSubnetSeeds
+			// Each kind asks for the state its own dry run needs, which is
+			// what apply does. remove_nodes is the exception: it declares a
+			// mirror scope rather than seeds, and still needs a subnet list to
+			// exist at all.
+			state := DryRunState{}
+			if seeder, ok := action.(DryRunSeeder); ok {
+				state = seeder.DryRunSeeds(goldenMainnetProviders)
 			}
-			n, _, _ := startNNSSeededWithProviders(t, principal.Principal{}, seeds, providers, false)
+			if spec.Kind == "remove_nodes" {
+				state.Subnets = goldenSubnetSeeds
+			}
+			n, _, _ := startNNSWith(t, principal.Principal{}, state, false)
 			pid, err := n.SubmitAs(n.Proposer, n.ProposerNeuron(), action)
 			if err != nil {
 				t.Fatalf("submit: %v", err)

@@ -90,6 +90,33 @@ var kinds = []kind{
 		Action: RemoveNodeProviderAction{},
 		Decode: decodeRemoveNodeProvider,
 	},
+	{
+		Name:     "add_data_centers",
+		Function: "add_or_remove_data_centers",
+		Doc:      "Nested in a proposal of kind \"add_data_centers\": registers data center records, one dc block each. Only adds: the payload can also remove, but removal has its own preconditions and is not exposed here. The canister traps on a dc_id it already holds, and it drops a record whose id, region, or owner exceeds 255 bytes while still reporting the proposal as executed, so preflight checks both before the proposal is cut. Ids are lowercased on the way in, which alpage does up front so the payload matches the record that lands.",
+		Since:    "v0.5.0",
+		Body:     addDataCentersBody{},
+		Action:   AddDataCentersAction{},
+		Decode:   decodeAddDataCenters,
+	},
+	{
+		// Native governance action, like its removal twin: no function number.
+		Name:   "add_node_provider",
+		Doc:    "Nested in a proposal of kind \"add_node_provider\": registers a node provider. A native governance action rather than an ExecuteNnsFunction. Governance rejects a principal that is already a provider; preflight checks that. The self-declaration is not part of the payload, which carries only the principal and an optional reward account, so link it from the proposal's url and summarise it in summary.",
+		Since:  "v0.5.0",
+		Body:   addNodeProviderBody{},
+		Action: AddNodeProviderAction{},
+		Decode: decodeAddNodeProvider,
+	},
+	{
+		Name:     "add_node_operator",
+		Function: "add_node_operator",
+		Doc:      "Nested in a proposal of kind \"add_node_operator\": registers a node operator under a provider, in a data center, with an allowance of nodes it may register. Submitted as ASSIGN_NOID, governance's name for the registry's add_node_operator. Both referents must already exist on-chain, which makes this the last of the three onboarding proposals. The data center and the provider do not depend on each other, so those two can go in either order or at once. Preflight checks the data center, the provider, and that the operator principal is still free.",
+		Since:    "v0.5.0",
+		Body:     addNodeOperatorBody{},
+		Action:   AddNodeOperatorAction{},
+		Decode:   decodeAddNodeOperator,
+	},
 }
 
 func kindByName(name string) (kind, bool) {
@@ -226,6 +253,92 @@ func decodeRemoveNodeOperators(s *Spec) (Action, error) {
 		ids[i] = p
 	}
 	return RemoveNodeOperatorsAction{Meta: s.Meta(), OperatorIDs: ids}, nil
+}
+
+func decodeAddDataCenters(s *Spec) (Action, error) {
+	var body addDataCentersBody
+	if err := s.decodeRest(&body); err != nil {
+		return nil, err
+	}
+	if len(body.DataCenters) == 0 {
+		return nil, fmt.Errorf("proposal %q: at least one data_center block is required", s.Name)
+	}
+	dcs := make([]DataCenterSpec, len(body.DataCenters))
+	for i, dc := range body.DataCenters {
+		if dc.ID == "" {
+			return nil, fmt.Errorf("proposal %q: data_center id is required", s.Name)
+		}
+		if dc.Region == "" {
+			return nil, fmt.Errorf("proposal %q: data_center %q: region is required", s.Name, dc.ID)
+		}
+		// The canister lowercases the id on the way in, so the payload states
+		// what will actually land rather than what was typed.
+		spec := DataCenterSpec{ID: strings.ToLower(dc.ID), Region: dc.Region, Owner: dc.Owner}
+		if g := dc.GPS; g != nil {
+			// The canister does not range-check coordinates, so a transposed
+			// pair would be stored verbatim. Rejected here instead.
+			if g.Latitude < -90 || g.Latitude > 90 {
+				return nil, fmt.Errorf("proposal %q: data_center %q: latitude %v out of range [-90, 90]", s.Name, dc.ID, g.Latitude)
+			}
+			if g.Longitude < -180 || g.Longitude > 180 {
+				return nil, fmt.Errorf("proposal %q: data_center %q: longitude %v out of range [-180, 180]", s.Name, dc.ID, g.Longitude)
+			}
+			spec.GPS = &GPSCoordinates{Latitude: float32(g.Latitude), Longitude: float32(g.Longitude)}
+		}
+		dcs[i] = spec
+	}
+	return AddDataCentersAction{Meta: s.Meta(), DataCenters: dcs}, nil
+}
+
+func decodeAddNodeProvider(s *Spec) (Action, error) {
+	var body addNodeProviderBody
+	if err := s.decodeRest(&body); err != nil {
+		return nil, err
+	}
+	p, err := principal.Decode(body.NodeProviderID)
+	if err != nil {
+		return nil, fmt.Errorf("proposal %q: node_provider_id %q: %w", s.Name, body.NodeProviderID, err)
+	}
+	action := AddNodeProviderAction{Meta: s.Meta(), ProviderID: p}
+	if body.RewardAccount != "" {
+		// Governance checks the account identifier's embedded CRC32 and
+		// rejects a bad one at submission, so it is checked at load instead.
+		id, err := principal.DecodeAccountID(body.RewardAccount)
+		if err != nil {
+			return nil, fmt.Errorf("proposal %q: reward_account %q: %w", s.Name, body.RewardAccount, err)
+		}
+		action.RewardAccount = id.Bytes()
+	}
+	return action, nil
+}
+
+func decodeAddNodeOperator(s *Spec) (Action, error) {
+	var body addNodeOperatorBody
+	if err := s.decodeRest(&body); err != nil {
+		return nil, err
+	}
+	operator, err := principal.Decode(body.NodeOperatorID)
+	if err != nil {
+		return nil, fmt.Errorf("proposal %q: node_operator_id %q: %w", s.Name, body.NodeOperatorID, err)
+	}
+	provider, err := principal.Decode(body.NodeProviderID)
+	if err != nil {
+		return nil, fmt.Errorf("proposal %q: node_provider_id %q: %w", s.Name, body.NodeProviderID, err)
+	}
+	if body.DcID == "" {
+		return nil, fmt.Errorf("proposal %q: dc_id is required", s.Name)
+	}
+	return AddNodeOperatorAction{
+		Meta:       s.Meta(),
+		OperatorID: operator,
+		ProviderID: provider,
+		// The canister lowercases dc_id on the way in, so the payload states
+		// what will actually land rather than what was typed.
+		DcID:               strings.ToLower(body.DcID),
+		NodeAllowance:      body.NodeAllowance,
+		IPv6:               body.IPv6,
+		MaxRewardableNodes: body.MaxRewardableNodes,
+	}, nil
 }
 
 func decodeRemoveNodeProvider(s *Spec) (Action, error) {

@@ -99,6 +99,18 @@ var schemaNestedBlocks = []SchemaBlock{
 		Type:  resourceLimitsBody{},
 		Since: "v0.5.0",
 	},
+	{
+		Name: "dc", File: "proposals.hcl",
+		Doc:   "Inside an add_data_centers block: one data center record to register. Repeat the block for each one. Distinct from the data_center resource block, which only names an existing id for reference; this one carries the fields the registry stores.",
+		Type:  dataCenterBody{},
+		Since: "v0.5.0",
+	},
+	{
+		Name: "gps", File: "proposals.hcl",
+		Doc:   "Inside a dc block: the site's coordinates. Optional, and omitted leaves the record without them.",
+		Type:  gpsBody{},
+		Since: "v0.5.0",
+	},
 }
 
 // SchemaFieldDocs maps "<struct>.<hclname>" to a field description. schemadoc
@@ -144,7 +156,7 @@ var SchemaFieldDocs = map[string]string{
 	"Provider.neuron":         "Proposer neuron id.",
 	"Provider.fetch_root_key": "Whether to fetch the IC root key. Unset defaults to true for non-mainnet hosts.",
 
-	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider).",
+	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider, add_data_centers, add_node_provider, add_node_operator).",
 	"Spec.title":   "Proposal title shown on the NNS.",
 	"Spec.summary": "Proposal summary (markdown).",
 	"Spec.url":     "Reference URL (e.g. forum thread).",
@@ -162,6 +174,26 @@ var SchemaFieldDocs = map[string]string{
 	"removeNodesBody.node":                    "A node to deregister. Repeat the block for each one.",
 	"removeNodeOperatorsBody.operators":       "Ids of the node operators whose records to delete (node_operator.<name>.id).",
 	"removeNodeProviderBody.node_provider_id": "Principal of the node provider to remove (node_provider.<name>.id).",
+
+	"addDataCentersBody.dc": "A data center record to register, repeated once per data center. See the dc block.",
+
+	"dataCenterBody.id":     "Registry data center id (data_center.<name>.id), at most 255 bytes and short by convention, e.g. zh3. The canister lowercases it, so alpage does too and the payload matches the record that lands.",
+	"dataCenterBody.region": "Registry region string as comma-separated continent,country,city (e.g. Europe,CH,Zurich). Reference data_center.<name>.region so the resource block stays the single source. The node reward table is keyed by region prefix, so this decides what the data center's nodes can earn.",
+	"dataCenterBody.owner":  "Legal owner of the data center as the self-declaration names it. Free text the NNS displays, at most 255 bytes.",
+	"dataCenterBody.gps":    "Optional coordinates for the site, described by the gps block. Omitting the block leaves the record without them.",
+
+	"gpsBody.latitude":  "Latitude in decimal degrees, between -90 and 90.",
+	"gpsBody.longitude": "Longitude in decimal degrees, between -180 and 180.",
+
+	"addNodeProviderBody.node_provider_id": "Principal of the node provider to register (node_provider.<name>.id). Governance rejects a principal it already knows.",
+	"addNodeProviderBody.reward_account":   "Ledger account identifier rewards are paid to, as 64 hex characters. Optional, but a provider registered without one earns nothing until a later UpdateNodeProvider supplies it, so preflight reports the omission. Governance validates the embedded checksum, so alpage rejects a malformed one when the config loads.",
+
+	"addNodeOperatorBody.node_operator_id":     "Principal of the node operator to register (node_operator.<name>.id). The operator signs add_node with this identity, so it must be a principal they hold the key for.",
+	"addNodeOperatorBody.node_provider_id":     "Principal of the provider this operator belongs to (node_provider.<name>.id). Governance rejects the proposal at submission when the provider is not registered, so the add_node_provider proposal has to land first.",
+	"addNodeOperatorBody.dc_id":                "Data center the operator's nodes sit in (data_center.<name>.id). The node-operator invariant rejects an unknown one when the proposal executes, so the add_data_centers proposal has to land first.",
+	"addNodeOperatorBody.node_allowance":       "How many nodes the operator may register before another proposal raises it. Omitted means 0, which is expected for a Cloud Engine operator because it needs no allowance. Any other operator with a 0 allowance gets a working record that cannot yet add nodes, so preflight reports the value either way.",
+	"addNodeOperatorBody.ipv6":                 "The operator's IPv6 prefix, recorded on the operator record. Omitting it leaves the field unset.",
+	"addNodeOperatorBody.max_rewardable_nodes": "Node reward type mapped to the maximum number of nodes of that type the provider may be rewarded for, e.g. { type3.1 = 28 }. Omitted means none of them, which is the case for an operator outside the node provider reward scheme. The payload's other reward map, rewardable_nodes, is the field the registry canister itself calls the old one, so alpage always sends it empty rather than exposing it.",
 
 	"updateSubnetBody.subnet_id":               "Subnet whose configuration changes (subnet.<name>.id).",
 	"updateSubnetBody.is_halted":               "Whether the subnet is halted: a halted subnet no longer creates or executes blocks. This is how a subnet is frozen for a recovery, and setting it back to false is how it resumes.",
@@ -283,4 +315,24 @@ var SchemaFieldSince = map[string]string{
 
 	"resourceLimitsBody.maximum_state_size":  "v0.5.0",
 	"resourceLimitsBody.maximum_state_delta": "v0.5.0",
+
+	"addDataCentersBody.dc": "v0.5.0",
+
+	"dataCenterBody.id":     "v0.5.0",
+	"dataCenterBody.region": "v0.5.0",
+	"dataCenterBody.owner":  "v0.5.0",
+	"dataCenterBody.gps":    "v0.5.0",
+
+	"gpsBody.latitude":  "v0.5.0",
+	"gpsBody.longitude": "v0.5.0",
+
+	"addNodeProviderBody.node_provider_id": "v0.5.0",
+	"addNodeProviderBody.reward_account":   "v0.5.0",
+
+	"addNodeOperatorBody.node_operator_id":     "v0.5.0",
+	"addNodeOperatorBody.node_provider_id":     "v0.5.0",
+	"addNodeOperatorBody.dc_id":                "v0.5.0",
+	"addNodeOperatorBody.node_allowance":       "v0.5.0",
+	"addNodeOperatorBody.ipv6":                 "v0.5.0",
+	"addNodeOperatorBody.max_rewardable_nodes": "v0.5.0",
 }

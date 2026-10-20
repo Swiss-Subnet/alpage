@@ -35,14 +35,38 @@ type Action interface {
 	Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error)
 }
 
-// DryRunSeeder is an Action whose local validation needs governance state a
+// DryRunState is the local state a kind's dry run needs planted before its
+// payload executes. Subnets are usually just systemSubnetSeeds(): the
+// registry's init invariant battery fires for any non-empty mutation set and
+// wants a system subnet.
+type DryRunState struct {
+	Providers   []ProviderSeed
+	Subnets     []SubnetSeed
+	DataCenters []DataCenterSeed
+}
+
+func (s DryRunState) Empty() bool {
+	return len(s.Providers) == 0 && len(s.Subnets) == 0 && len(s.DataCenters) == 0
+}
+
+// DryRunSeeder is an Action whose local validation needs state a
 // freshly-initialized NNS lacks. The dry run hands over the providers mainnet
-// reports and seeds what comes back, so the local check tests the real question
-// instead of failing on empty state. The subnet seeds it returns keep the
-// registry's init invariants satisfied, which fire for any non-empty mutation
-// set.
+// reports and plants what comes back, so the local check tests the real
+// question instead of failing on empty state.
 type DryRunSeeder interface {
-	DryRunSeeds(mainnetProviders []string) ([]ProviderSeed, []SubnetSeed)
+	DryRunSeeds(mainnetProviders []string) DryRunState
+}
+
+// systemSubnetSeeds is the fabricated system subnet on its own, for a kind that
+// needs no real subnet but does mutate the registry. A bad constant returns
+// nothing rather than panicking the CLI mid-apply. The dry run then fails on
+// the invariant, which is visible enough.
+func systemSubnetSeeds() []SubnetSeed {
+	s, err := SystemSubnetSeed()
+	if err != nil {
+		return nil
+	}
+	return []SubnetSeed{s}
 }
 
 // Meta is the common proposal metadata every kind carries. Concrete actions

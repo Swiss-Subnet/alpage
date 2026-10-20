@@ -173,11 +173,32 @@ func (sr NodeSevReconcile) Table() Table {
 			Name:   row.Name,
 			ID:     row.NodeID,
 			Detail: detail,
+			Remedy: remedyOf(row.Status),
 			OK:     row.Status == NodeSevInSync || row.Status == NodeSevUnknown,
 			Color:  row.Status.color(),
 		})
 	}
 	return t
+}
+
+// remedy names what clears each chip status. None of these are fixed by a
+// proposal: a chip is recorded when the node is onboarded with SEV, so the
+// resolution is either an edit to resources.hcl or a look at the hardware.
+func (s NodeSevStatus) remedy() string {
+	switch s {
+	case NodeSevMismatch:
+		return "the physical CPU changed, so update chip_id if the swap was intended and investigate if it was not"
+	case NodeSevMissing:
+		return "the registry records no chip for this node, so drop chip_id unless the node is meant to be running SEV"
+	case NodeSevUndeclared:
+		return "copy the on-chain chip into the node's chip_id so a later change shows as drift"
+	case NodeSevMalformed:
+		return "chip_id has to be hex or base64 of the 64 byte CHIP_ID"
+	case NodeSevUnverified:
+		return "AMD did not vouch for this chip, so re-check with --refresh-chips before trusting the verdict"
+	default:
+		return ""
+	}
 }
 
 func (sr NodeSevReconcile) HasDrift() bool { return sr.Table().HasDrift() }

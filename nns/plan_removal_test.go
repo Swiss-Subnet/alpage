@@ -20,7 +20,7 @@ func TestPlanRemoveNodesBlocksSubnetMember(t *testing.T) {
 	if len(p.Issues) != 1 || p.Issues[0].Target != "n-member" {
 		t.Errorf("expected one issue for n-member, got %+v", p.Issues)
 	}
-	if removalPreflight(p).Level != PreflightWarn {
+	if preconditionPreflight(p).Level != PreflightWarn {
 		t.Error("a blocking issue must surface as a warning")
 	}
 }
@@ -39,7 +39,7 @@ func TestPlanRemoveNodesUnknownIsNotBlocking(t *testing.T) {
 	if !p.NoOp {
 		t.Error("removing only absent nodes changes nothing")
 	}
-	if removalPreflight(p).Level != PreflightNoOp {
+	if preconditionPreflight(p).Level != PreflightNoOp {
 		t.Error("an all-absent removal is a no-op")
 	}
 }
@@ -53,7 +53,7 @@ func TestPlanRemoveNodesClean(t *testing.T) {
 	if len(p.Issues) != 0 {
 		t.Errorf("expected no issues, got %+v", p.Issues)
 	}
-	pf := removalPreflight(p)
+	pf := preconditionPreflight(p)
 	if pf.Level != PreflightClean {
 		t.Error("unassigned registered nodes remove cleanly")
 	}

@@ -154,6 +154,63 @@ func (m *mainnetRegistry) value(key string) ([]byte, bool, error) {
 	return resp.GetValue(), true, nil
 }
 
+// FetchDataCenters reads data center records back from a live registry,
+// omitting the ids it has none for. Every read is pinned to one version, taken
+// once, so a mutation landing mid-walk cannot produce a torn view.
+//
+// Goes through the same uncertified get_value path the mirror uses, for the
+// same reason: there is no certified counterpart, and a forged answer could
+// only mislabel an add as an overwrite or the reverse while the operator still
+// confirms before submitting.
+func FetchDataCenters(host string, fetchRootKey bool, dcIDs []string) (map[string]DataCenterSpec, error) {
+	r, err := newMainnetRegistry(host, fetchRootKey)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]DataCenterSpec, len(dcIDs))
+	for _, id := range dcIDs {
+		blob, ok, err := r.value("data_center_record_" + id)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		var rec registrypb.DataCenterRecord
+		if err := proto.Unmarshal(blob, &rec); err != nil {
+			return nil, fmt.Errorf("decode data_center_record %s: %w", id, err)
+		}
+		spec := DataCenterSpec{ID: rec.GetId(), Region: rec.GetRegion(), Owner: rec.GetOwner()}
+		if g := rec.GetGps(); g != nil {
+			spec.GPS = &GPSCoordinates{Latitude: g.GetLatitude(), Longitude: g.GetLongitude()}
+		}
+		out[id] = spec
+	}
+	return out, nil
+}
+
+// FetchDataCenterExists reports whether the registry holds a data center
+// record, which is all the add_node_operator preflight needs to know.
+func FetchDataCenterExists(host string, fetchRootKey bool, dcID string) (bool, error) {
+	found, err := FetchDataCenters(host, fetchRootKey, []string{dcID})
+	if err != nil {
+		return false, err
+	}
+	_, ok := found[dcID]
+	return ok, nil
+}
+
+// FetchNodeOperatorExists reports whether the registry already holds an
+// operator record for a principal. do_add_node_operator traps on one that does.
+func FetchNodeOperatorExists(host string, fetchRootKey bool, operatorID principal.Principal) (bool, error) {
+	r, err := newMainnetRegistry(host, fetchRootKey)
+	if err != nil {
+		return false, err
+	}
+	_, ok, err := r.value("node_operator_record_" + operatorID.Encode())
+	return ok, err
+}
+
 // FetchMirror copies the registry records in scope out of a live IC, ready to
 // be planted in the dry-run registry.
 func FetchMirror(host string, fetchRootKey bool, scope MirrorScope) (*Mirror, error) {

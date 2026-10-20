@@ -101,11 +101,28 @@ func (rc SubnetReconcile) Table() Table {
 			Name:   row.Name,
 			ID:     row.NodeID,
 			Detail: detail,
+			Remedy: remedyOf(row.Status),
 			OK:     row.Status == ReconcileInSync,
 			Color:  row.Status.color(),
 		})
 	}
 	return t
+}
+
+// remedy names what resolves each status. Only proposal kinds alpage actually
+// implements are named, so a remedy never points at a command that does not
+// exist.
+func (s ReconcileStatus) remedy() string {
+	switch s {
+	case ReconcileMissing:
+		return "add it with a membership proposal, or drop the subnet field if it was never meant to join"
+	case ReconcileDeregistered:
+		return "the node record is gone, so mark the node decommissioned or register it again before adding it back"
+	case ReconcileUnmanaged:
+		return "declare a node block for it, or take it out with a membership proposal"
+	default:
+		return ""
+	}
 }
 
 func (rc SubnetReconcile) HasDrift() bool { return rc.Table().HasDrift() }

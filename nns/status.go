@@ -45,6 +45,42 @@ type ProposalStatus struct {
 	Failure     string
 }
 
+// Outcome reduces a status to the part worth keeping once it can no longer
+// change.
+func (ps *ProposalStatus) Outcome() Outcome {
+	return Outcome{
+		Label:   ps.Label,
+		Source:  ps.Source,
+		Yes:     ps.Yes,
+		No:      ps.No,
+		Total:   ps.Total,
+		Failure: ps.Failure,
+	}
+}
+
+// SettledStatus rebuilds a terminal proposal's status from state, returning nil
+// when the entry has nothing cached. The result goes through the same
+// StatusLine as a fetched one, so a cached line is indistinguishable from a
+// queried one rather than being a degraded version of it.
+func SettledStatus(e Entry) *ProposalStatus {
+	if !e.Status.Terminal() || e.Outcome == nil {
+		return nil
+	}
+	o := e.Outcome
+	return &ProposalStatus{
+		Source:     o.Source,
+		Label:      o.Label,
+		State:      e.Status,
+		ResolvedAt: e.ResolvedAt,
+		// SubmittedAt is deliberately left to the Entry, which already holds
+		// the chain's own value from the run that settled this proposal.
+		Yes:     o.Yes,
+		No:      o.No,
+		Total:   o.Total,
+		Failure: o.Failure,
+	}
+}
+
 // FetchProposalStatus resolves a recorded proposal's live status. It queries
 // governance first; if governance no longer knows the id (purged), it falls
 // back to the ICP dashboard API. Returns nil, nil when neither source has the

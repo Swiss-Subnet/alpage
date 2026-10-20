@@ -95,7 +95,7 @@ This page documents the current development schema, ahead of the latest release.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
-| `kind` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider). |
+| `kind` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider, add_data_centers, add_node_provider, add_node_operator). |
 | `title` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal title shown on the NNS. |
 | `summary` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal summary (markdown). |
 | `url` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Reference URL (e.g. forum thread). |
@@ -167,6 +167,36 @@ This page documents the current development schema, ahead of the latest release.
 |-------|------|----------|-------|-------------|
 | `node_provider_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the node provider to remove (`node_provider.<name>.id`). |
 
+### `add_data_centers { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "add_data_centers": registers data center records, one [dc](#dc-) block each. Only adds: the payload can also remove, but removal has its own preconditions and is not exposed here. The canister traps on a dc_id it already holds, and it drops a record whose id, region, or owner exceeds 255 bytes while still reporting the proposal as executed, so preflight checks both before the proposal is cut. Ids are lowercased on the way in, which alpage does up front so the payload matches the record that lands.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `dc` | block | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | A data center record to register, repeated once per data center. See the [dc](#dc-) block. |
+
+### `add_node_provider { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "add_node_provider": registers a node provider. A native governance action rather than an ExecuteNnsFunction. Governance rejects a principal that is already a provider; preflight checks that. The self-declaration is not part of the payload, which carries only the principal and an optional reward account, so link it from the proposal's url and summarise it in summary.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `node_provider_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the node provider to register (`node_provider.<name>.id`). Governance rejects a principal it already knows. |
+| `reward_account` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Ledger account identifier rewards are paid to, as 64 hex characters. Optional, but a provider registered without one earns nothing until a later UpdateNodeProvider supplies it, so preflight reports the omission. Governance validates the embedded checksum, so alpage rejects a malformed one when the config loads. |
+
+### `add_node_operator { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Nested in a proposal of kind "add_node_operator": registers a node operator under a provider, in a data center, with an allowance of nodes it may register. Submitted as ASSIGN_NOID, governance's name for the registry's add_node_operator. Both referents must already exist on-chain, which makes this the last of the three onboarding proposals. The data center and the provider do not depend on each other, so those two can go in either order or at once. Preflight checks the data center, the provider, and that the operator principal is still free.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `node_operator_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the node operator to register (`node_operator.<name>.id`). The operator signs add_node with this identity, so it must be a principal they hold the key for. |
+| `node_provider_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Principal of the provider this operator belongs to (`node_provider.<name>.id`). Governance rejects the proposal at submission when the provider is not registered, so the add_node_provider proposal has to land first. |
+| `dc_id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Data center the operator's nodes sit in (`data_center.<name>.id`). The node-operator invariant rejects an unknown one when the proposal executes, so the add_data_centers proposal has to land first. |
+| `node_allowance` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | How many nodes the operator may register before another proposal raises it. Omitted means 0, which is expected for a Cloud Engine operator because it needs no allowance. Any other operator with a 0 allowance gets a working record that cannot yet add nodes, so preflight reports the value either way. |
+| `ipv6` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | The operator's IPv6 prefix, recorded on the operator record. Omitting it leaves the field unset. |
+| `max_rewardable_nodes` | attr | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Node reward type mapped to the maximum number of nodes of that type the provider may be rewarded for, e.g. { type3.1 = 28 }. Omitted means none of them, which is the case for an operator outside the node provider reward scheme. The payload's other reward map, rewardable_nodes, is the field the registry canister itself calls the old one, so alpage always sends it empty rather than exposing it. |
+
 ### `add / remove { }`
 
 <span class="since" title="Introduced in v0.1.0">v0.1.0</span> Inside a [membership](#membership-) block: a node to add to or remove from the subnet.
@@ -194,6 +224,26 @@ This page documents the current development schema, ahead of the latest release.
 |-------|------|----------|-------|-------------|
 | `maximum_state_size` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum subnet state size in bytes. |
 | `maximum_state_delta` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Maximum subnet state delta in bytes. |
+
+### `dc { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Inside an [add_data_centers](#add_data_centers-) block: one data center record to register. Repeat the block for each one. Distinct from the data_center resource block, which only names an existing id for reference; this one carries the fields the registry stores.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `id` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Registry data center id (`data_center.<name>.id`), at most 255 bytes and short by convention, e.g. zh3. The canister lowercases it, so alpage does too and the payload matches the record that lands. |
+| `region` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Registry region string as comma-separated continent,country,city (e.g. Europe,CH,Zurich). Reference `data_center.<name>.region` so the resource block stays the single source. The node reward table is keyed by region prefix, so this decides what the data center's nodes can earn. |
+| `owner` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Legal owner of the data center as the self-declaration names it. Free text the NNS displays, at most 255 bytes. |
+| `gps` | block | no | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Optional coordinates for the site, described by the [gps](#gps-) block. Omitting the block leaves the record without them. |
+
+### `gps { }`
+
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Inside a [dc](#dc-) block: the site's coordinates. Optional, and omitted leaves the record without them.
+
+| Field | Kind | Required | Since | Description |
+|-------|------|----------|-------|-------------|
+| `latitude` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Latitude in decimal degrees, between -90 and 90. |
+| `longitude` | attr | yes | <span class="since" title="Introduced in v0.5.0">v0.5.0</span> | Longitude in decimal degrees, between -180 and 180. |
 
 ## Schema History
 
