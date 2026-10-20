@@ -2,6 +2,7 @@ package nns
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/aviate-labs/agent-go/principal"
 	"github.com/hashicorp/hcl/v2"
@@ -170,6 +171,40 @@ type Config struct {
 
 const DefaultConfigPath = "proposals.hcl"
 
+// proposalURLDomain is governance's entire allowlist for the proposal url. It
+// is matched exactly against everything between the scheme and the first slash,
+// so a subdomain or an explicit port is rejected.
+const proposalURLDomain = "forum.dfinity.org"
+
+// validateProposalURL mirrors validate_proposal_url in governance, which only
+// reports a rejected url after the payload has already been built and submitted.
+// An empty url is legal there, so it is legal here.
+func validateProposalURL(url string) error {
+	if url == "" {
+		return nil
+	}
+	if n := len(url); n < 10 || n > 2048 {
+		return fmt.Errorf("url is %d characters, outside governance's range of 10 to 2048", n)
+	}
+	rest, ok := strings.CutPrefix(url, "https://")
+	if !ok {
+		return fmt.Errorf("url %q must begin with https://", url)
+	}
+	if rest == "" {
+		return fmt.Errorf("url %q has nothing after the scheme", url)
+	}
+	if strings.Contains(rest, "://") {
+		return fmt.Errorf("url %q contains more than one scheme", url)
+	}
+	if strings.Contains(url, "@") {
+		return fmt.Errorf("url %q must not carry authentication information", url)
+	}
+	if domain, _, _ := strings.Cut(rest, "/"); domain != proposalURLDomain {
+		return fmt.Errorf("url %q is on %q, and governance accepts only %s", url, domain, proposalURLDomain)
+	}
+	return nil
+}
+
 // LoadConfig parses proposals.hcl, resolving node/subnet references against the
 // resources.hcl sitting alongside it.
 func LoadConfig(path string) (*Config, error) {
@@ -198,6 +233,9 @@ func LoadConfig(path string) (*Config, error) {
 		}
 		seen[name] = true
 		cfg.Proposals[i].evalCtx = evalCtx
+		if err := validateProposalURL(cfg.Proposals[i].URL); err != nil {
+			return nil, fmt.Errorf("%s: proposal %q: %w", path, name, err)
+		}
 		if _, err := cfg.Proposals[i].Action(); err != nil {
 			return nil, err
 		}

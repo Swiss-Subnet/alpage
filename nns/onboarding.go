@@ -201,16 +201,26 @@ func (a AddNodeProviderAction) RenderPayload(b *strings.Builder, blob []byte) {
 		fmt.Fprintf(b, "    <undecodable payload: %v>\n", err)
 		return
 	}
-	if c.ToAdd == nil || c.ToAdd.Id == nil {
-		fmt.Fprintf(b, "    <no provider to add>\n")
-		return
-	}
-	fmt.Fprintf(b, "    node provider added:\n      + %s\n", c.ToAdd.Id.Encode())
-	if ra := c.ToAdd.RewardAccount; ra != nil {
-		fmt.Fprintf(b, "          reward_account: %x\n", ra.Hash)
-	} else {
-		acct := principal.NewAccountID(*c.ToAdd.Id, principal.DefaultSubAccount)
-		fmt.Fprintf(b, "          reward_account: unset, so rewards go to the principal's default account %s\n", acct.Encode())
+	renderProviderChange(b, c)
+}
+
+// renderProviderChange prints an AddOrRemoveNodeProvider change. Both provider
+// kinds share it, and render() calls it for a proposal read back from
+// governance, where the change arrives decoded rather than as a candid blob.
+func renderProviderChange(b *strings.Builder, c governance.Change) {
+	switch {
+	case c.ToAdd != nil && c.ToAdd.Id != nil:
+		fmt.Fprintf(b, "    node provider added:\n      + %s\n", c.ToAdd.Id.Encode())
+		if ra := c.ToAdd.RewardAccount; ra != nil {
+			fmt.Fprintf(b, "          reward_account: %x\n", ra.Hash)
+		} else {
+			acct := principal.NewAccountID(*c.ToAdd.Id, principal.DefaultSubAccount)
+			fmt.Fprintf(b, "          reward_account: unset, so rewards go to the principal's default account %s\n", acct.Encode())
+		}
+	case c.ToRemove != nil && c.ToRemove.Id != nil:
+		fmt.Fprintf(b, "    node provider removed:\n      - %s\n", c.ToRemove.Id.Encode())
+	default:
+		fmt.Fprintf(b, "    <no provider change>\n")
 	}
 }
 

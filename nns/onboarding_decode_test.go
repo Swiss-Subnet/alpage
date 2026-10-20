@@ -8,6 +8,7 @@ import (
 
 	"github.com/aviate-labs/agent-go/candid"
 	"github.com/aviate-labs/agent-go/principal"
+	"github.com/swiss-subnet/alpage/gen/governance"
 	"github.com/swiss-subnet/alpage/gen/registry"
 )
 
@@ -173,21 +174,26 @@ proposal "p" {
 	}
 }
 
-// With no reward_account in the payload, governance pays the default account
-// of the provider principal, so the rendered payload names that account rather
-// than calling the rewards undeliverable.
-func TestAddNodeProviderRendersDefaultRewardAccount(t *testing.T) {
+// A native governance action carries no NNS function number, so it is absent
+// from the renderer table and the dry run printed nothing at all below the URL.
+// With no reward_account in the change, the account rewards actually land in is
+// the default account of the provider principal, so the render names it.
+func TestRenderShowsNodeProviderChange(t *testing.T) {
 	id := mintPrincipal("reward account fixture")
-	a := AddNodeProviderAction{Meta: Meta{Title: "Add"}, ProviderID: id}
-	blob, err := a.PayloadBlob()
-	if err != nil {
-		t.Fatalf("payload: %v", err)
-	}
-	var b strings.Builder
-	a.RenderPayload(&b, blob)
-	want := principal.NewAccountID(id, principal.DefaultSubAccount).Encode()
-	if !strings.Contains(b.String(), want) {
-		t.Errorf("rendered payload should name the default account %s, got:\n%s", want, b.String())
+	pi := &governance.ProposalInfo{Proposal: &governance.Proposal{
+		Action: &governance.Action{AddOrRemoveNodeProvider: &governance.AddOrRemoveNodeProvider{
+			Change: &governance.Change{ToAdd: &governance.NodeProvider{Id: &id}},
+		}},
+	}}
+	got := Render(pi)
+	for _, want := range []string{
+		"AddOrRemoveNodeProvider",
+		id.Encode(),
+		principal.NewAccountID(id, principal.DefaultSubAccount).Encode(),
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered proposal missing %q:\n%s", want, got)
+		}
 	}
 }
 

@@ -1042,6 +1042,7 @@ func dryRun(action nns.Action, offline bool, host string, fetchRootKey bool) err
 	if err != nil {
 		return err
 	}
+	fmt.Println("Local NNS result, where the proposal id, proposer neuron and tally are fabricated:")
 	fmt.Print(nns.RenderVerbose(pi))
 	return nil
 }

@@ -137,6 +137,14 @@ func render(pi *governance.ProposalInfo, verbose bool) string {
 		if u := pi.Proposal.Url; u != "" {
 			fmt.Fprintf(&b, "  URL:     %s\n", u)
 		}
+		// A native governance action carries no NNS function number, so it is
+		// not in the renderer table and used to print nothing below the URL.
+		if act := pi.Proposal.Action; act != nil && act.AddOrRemoveNodeProvider != nil {
+			b.WriteString("  Action:  AddOrRemoveNodeProvider\n")
+			if c := act.AddOrRemoveNodeProvider.Change; c != nil {
+				renderProviderChange(&b, *c)
+			}
+		}
 		if act := pi.Proposal.Action; act != nil && act.ExecuteNnsFunction != nil {
 			ef := act.ExecuteNnsFunction
 			fmt.Fprintf(&b, "  Action:  ExecuteNnsFunction #%d", ef.NnsFunction)

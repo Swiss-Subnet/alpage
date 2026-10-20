@@ -300,3 +300,27 @@ func TestStateRoundTrip(t *testing.T) {
 		t.Errorf("state file missing: %v", err)
 	}
 }
+
+// Governance rejects a url outside its allowlist at submission, after the dry
+// run has already passed, so the same rule runs when the config loads.
+func TestProposalURLMatchesGovernanceRules(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		want bool
+	}{
+		{"", true},
+		{"https://forum.dfinity.org", true},
+		{"https://forum.dfinity.org/t/some-thread/12345", true},
+		{"http://forum.dfinity.org/t/x", false},
+		{"https://forum.dfinity.org:443/t/x", false},
+		{"https://dfinity.org/t/x", false},
+		{"https://example.invalid/t/x", false},
+		{"https://user@forum.dfinity.org/t/x", false},
+		{"https://f.io", false},
+	} {
+		err := validateProposalURL(tc.url)
+		if (err == nil) != tc.want {
+			t.Errorf("url %q: accepted = %v, want %v (%v)", tc.url, err == nil, tc.want, err)
+		}
+	}
+}

@@ -98,7 +98,7 @@ This page documents the current development schema, ahead of the latest release.
 | `kind` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider, add_data_centers, add_node_provider, add_node_operator). |
 | `title` | attr | yes | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal title shown on the NNS. |
 | `summary` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Proposal summary (markdown). |
-| `url` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Reference URL (e.g. forum thread). |
+| `url` | attr | no | <span class="since" title="Introduced in v0.1.0">v0.1.0</span> | Reference URL for the proposal, such as a forum thread. Governance accepts only an https link on forum.dfinity.org. Alpage applies the same rule when the config loads. |
 
 ### `membership { }`
 

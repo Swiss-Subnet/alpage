@@ -30,7 +30,7 @@ proposal "fixture" {
   kind    = %q
   title   = "t"
   summary = "s"
-  url     = "https://example.invalid/t"
+  url     = "https://forum.dfinity.org/t/fixture"
 %s
 }
 `, kind, body)

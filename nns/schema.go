@@ -159,7 +159,7 @@ var SchemaFieldDocs = map[string]string{
 	"Spec.kind":    "Proposal kind; selects the nested block (membership, deploy_guestos, update_subnet, remove_nodes, remove_node_operators, remove_node_provider, add_data_centers, add_node_provider, add_node_operator).",
 	"Spec.title":   "Proposal title shown on the NNS.",
 	"Spec.summary": "Proposal summary (markdown).",
-	"Spec.url":     "Reference URL (e.g. forum thread).",
+	"Spec.url":     "Reference URL for the proposal, such as a forum thread. Governance accepts only an https link on forum.dfinity.org. Alpage applies the same rule when the config loads.",
 
 	"membershipBody.subnet_id": "Subnet whose membership changes (subnet.<name>.id).",
 	"membershipBody.add":       "A node to add to the subnet; repeatable. See the add / remove block.",

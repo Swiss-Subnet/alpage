@@ -287,9 +287,5 @@ func (r RemoveNodeProviderAction) RenderPayload(b *strings.Builder, blob []byte)
 		fmt.Fprintf(b, "    <undecodable payload: %v>\n", err)
 		return
 	}
-	if c.ToRemove == nil || c.ToRemove.Id == nil {
-		fmt.Fprintf(b, "    <no provider to remove>\n")
-		return
-	}
-	fmt.Fprintf(b, "    node provider removed:\n      - %s\n", c.ToRemove.Id.Encode())
+	renderProviderChange(b, c)
 }

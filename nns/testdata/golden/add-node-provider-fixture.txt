@@ -6,3 +6,7 @@ Proposal 1
   Title:   Add node provider fixture
   Summary: Golden fixture: register a node provider.
   URL:     https://forum.dfinity.org/t/test-add-provider-fixture
+  Action:  AddOrRemoveNodeProvider
+    node provider added:
+      + x6osd-5npm5-fpmp4-4d5xj-bphuq-sut6o-yw5us-mjhlj-cjx6u-w5vzw-nqe
+          reward_account: 453c3699c3809eaca2ba129333cffc7665b739818b0d227283c2b77b29488c8d

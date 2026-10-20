@@ -6,3 +6,6 @@ Proposal 1
   Title:   Remove node provider fixture
   Summary: Golden fixture: remove a node provider.
   URL:     https://forum.dfinity.org/t/test-remove-provider-fixture
+  Action:  AddOrRemoveNodeProvider
+    node provider removed:
+      - dchi6-uidam-bqgay-dambq-gayda-mbqga-ydamb-qgayd-ambqg-aydam-bqg

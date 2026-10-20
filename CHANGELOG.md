@@ -15,7 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 - `add_data_centers` preflights the two ways `add_or_remove_data_centers` misbehaves. A `dc_id` the registry already holds makes the canister trap after adoption, even though the mutation it builds is an upsert, and a record whose `id`, `region`, or `owner` exceeds 255 bytes is dropped from the batch with only a log line, so the proposal executes and reports success having registered nothing.
 - `node_allowance` defaults to 0, which registers a working operator that cannot yet register nodes. Cloud Engine operators need no allowance, so preflight reports the value rather than treating 0 as a mistake.
 - `rewardable_nodes` is deliberately not exposed. The registry canister calls it the old field, and the current reward calculation reads neither it nor `max_rewardable_nodes`, deriving rewardability from each node record's `node_reward_type` and its operator's data center region instead. alpage always sends it empty and exposes only `max_rewardable_nodes`.
-- `reward_account` on `add_node_provider` is validated when the config loads. Governance checks the account identifier's embedded CRC32 and rejects a bad one at submission, which is a slow way to find a typo. Leaving it out is legitimate: `get_node_provider_reward` pays a provider with no reward account into the default account of its principal, so the dry run renders that account instead of warning.
+- `reward_account` on `add_node_provider` is validated when the config loads. Governance checks the account identifier's embedded CRC32 and rejects a bad one at submission, which is a slow way to find a typo. Leaving it out is legitimate, because governance then pays the provider into the default account of its principal, and the dry run names that account.
 - `data_center.<name>.region` now resolves in `proposals.hcl`, so an `add_data_centers` proposal names the region its `data_center` block already declares instead of restating it where the two can drift.
 - `alp reconcile` checks `data_center` blocks against their registry records. The region was already compared, but only through an operator whose provider was queried, so a data center with no operator under it went unchecked entirely.
 - `alp status` no longer re-queries proposals that have settled. An executed, rejected, or failed proposal cannot change on-chain, so its result is recorded once and reported from state afterwards. The run used to cost one governance query per proposal ever submitted, which only ever grows, and now costs one per proposal still in flight. `state.json` gained an `outcome` per settled entry, written once and never rewritten, so a cached line is identical to a queried one rather than a shortened version of it. `--refresh` queries everything. Entries recorded before this change have no outcome, so they are queried once more and cached after that.
@@ -34,6 +34,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 - A node omitting `guestos_version` inherits the `guestos_version` marked `default` instead of going unchecked. Without a default declared, omitting it still means unchecked, so an existing config is unaffected until one is added. `guestos_version = "none"` opts a single node out.
 
 - `plan` and a submit's preflight always print what they checked and end on an explicit verdict. A clean result used to print nothing at all, which reads the same as a proposal that was never parsed, so a plan that silently did nothing was indistinguishable from one that passed.
+
+- A proposal `url` is rejected when the config loads unless it is an https link on `forum.dfinity.org`, which is governance's whole allowlist. Governance used to be the one to say so, long after the dry run passed.
+
+- `add_node_provider` and `remove_node_provider` show their payload. Every view of them used to stop below the URL, reporting a status for a change nobody could read.
+
+- The dry-run output says that the proposal id, proposer neuron and tally it prints come from the local NNS rather than from mainnet.
 
 ## [0.4.0] - 2026-08-07
 
