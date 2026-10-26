@@ -136,11 +136,17 @@ func FetchSubnetRecordFacts(host string, fetchRootKey bool, subnetID principal.P
 	for _, p := range rec.SubnetAdmins {
 		admins = append(admins, p.Encode())
 	}
+	// A subnet that carries no features record at all has a nil one here, which
+	// stays nil rather than reading as false: reconcile reports the two apart.
+	var sev *bool
+	if rec.Features != nil {
+		sev = rec.Features.SevEnabled
+	}
 	return SubnetRecordFacts{
 		Type:         candidSubnetTypeName(rec.SubnetType),
 		CostSchedule: candidCostScheduleName(rec.CanisterCyclesCostSchedule),
 		Admins:       admins,
-		Features:     SubnetFeatures{SevEnabled: rec.Features.SevEnabled},
+		Features:     SubnetFeatures{SevEnabled: sev},
 	}, nil
 }
 

@@ -165,13 +165,22 @@ func (r MembershipProposal) MirrorScope() MirrorScope {
 	}
 }
 
-// Preflight diffs the change against the subnet's current on-chain membership.
+// Preflight diffs the change against the subnet's current on-chain membership,
+// and on a SEV-enabled subnet checks each incoming node for a chip_id.
 func (r MembershipProposal) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
-	current, err := FetchSubnetMembership(host, fetchRootKey, r.SubnetID, opts...)
+	rec, err := getSubnetRecord(host, fetchRootKey, r.SubnetID, opts)
 	if err != nil {
 		return Preflight{}, fmt.Errorf("fetch membership: %w", err)
 	}
-	return membershipPreflight(PlanMembership(r, current)), nil
+	pf := membershipPreflight(PlanMembership(r, decodeMembership(rec.Membership)))
+	if !sevEnabled(rec) || len(r.NodeIDsAdd) == 0 {
+		return pf, nil
+	}
+	var o fetchOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return checkSevAdmission(o.explorer(), encodePrincipals(r.NodeIDsAdd)).fold(pf), nil
 }
 
 func (r MembershipProposal) RenderPayload(b *strings.Builder, blob []byte) {
@@ -240,12 +249,14 @@ func (d DeployGuestosAction) MirrorScope() MirrorScope {
 // without it a deploy cannot be verified as executable. AllowUnverifiedElection
 // downgrades that to a warning for the case where the source is down and the
 // deploy has to go ahead anyway. The release lookup is display-only, so it
-// always degrades to a note rather than blocking an otherwise valid deploy.
+// always degrades to a note rather than blocking an otherwise valid deploy. On
+// a SEV-enabled subnet the target also has to carry guest launch measurements.
 func (d DeployGuestosAction) Preflight(host string, fetchRootKey bool, opts ...FetchOption) (Preflight, error) {
-	current, err := FetchSubnetReplicaVersion(host, fetchRootKey, d.SubnetID, opts...)
+	rec, err := getSubnetRecord(host, fetchRootKey, d.SubnetID, opts)
 	if err != nil {
 		return Preflight{}, fmt.Errorf("fetch subnet replica version: %w", err)
 	}
+	current := rec.ReplicaVersionId
 	var o fetchOpts
 	for _, opt := range opts {
 		opt(&o)
@@ -261,6 +272,10 @@ func (d DeployGuestosAction) Preflight(host string, fetchRootKey bool, opts ...F
 	pf := planDeployGuestos(d.ReplicaVersionID, current, elected, rel)
 	if relErr != nil {
 		pf.Report += fmt.Sprintf("  release lookup unavailable: %v\n", relErr)
+	}
+	if sevEnabled(rec) {
+		has, known := elected.Measured[d.ReplicaVersionID]
+		pf = sevLaunchGate(pf, d.ReplicaVersionID, has, known)
 	}
 	return pf, nil
 }

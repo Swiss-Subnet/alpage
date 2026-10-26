@@ -14,11 +14,11 @@ func TestVersionElectedPresentRecord(t *testing.T) {
 	// A replica_version_<id> record whose latest entry carries a value means
 	// the version is elected.
 	const rec = `[{"key":"replica_version_abc","version":62444,"value":"CIA="}]`
-	got, err := parseVersionElected([]byte(rec))
+	got, err := parseVersionRecord([]byte(rec))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if !got {
+	if !got.Elected {
 		t.Error("a present record means elected")
 	}
 }
@@ -32,22 +32,22 @@ func TestVersionElectedDeletionMutation(t *testing.T) {
 	  {"key":"replica_version_feb8e5f2","version":62313,"value":null},
 	  {"key":"replica_version_feb8e5f2","version":59942,"value":"CIA="}
 	]`
-	got, err := parseVersionElected([]byte(rec))
+	got, err := parseVersionRecord([]byte(rec))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if got {
+	if got.Elected {
 		t.Error("an unelected version must not count as elected")
 	}
 }
 
 func TestVersionElectedNoRecord(t *testing.T) {
 	// The explorer returns null for a key it has never seen.
-	got, err := parseVersionElected([]byte(`null`))
+	got, err := parseVersionRecord([]byte(`null`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if got {
+	if got.Elected {
 		t.Error("a version with no record was never elected")
 	}
 }

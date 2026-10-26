@@ -25,7 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 - `guestos_version` blocks accept `default = true`, the version every node is expected to run unless its own block overrides it. A subnet upgrades all at once, so a per-node version is the exception: with a default declared, a release bump is one edit rather than one per node. Two defaults are a load error. Reconcile names the default under the version table and marks the rows that override it.
 - `guestos_version.<name>.id` now resolves in `proposals.hcl`, so a `deploy_guestos` proposal names a version the same way nodes do instead of repeating the hash.
 
-- `update_subnet` proposals change a subnet's configuration record: halt and unhalt it, grant SSH access, cap its canister count, restate its features, or retune consensus. Every field is optional and the registry skips an unset one, so a proposal changes exactly what it declares; a nested block is replaced wholesale instead, so `features` and `resource_limits` require all of their fields. Preflight diffs every declared field against the current record, reports the ones already at their declared value, and blocks a `sev_enabled` change, which the registry rejects because SEV can only be set when a subnet is created.
+- `update_subnet` proposals change a subnet's configuration record: halt and unhalt it, grant SSH access, cap its canister count, restate its features, or retune consensus. Every field is optional and the registry skips an unset one, so a proposal changes exactly what it declares; a nested block is replaced wholesale instead, so `features` and `resource_limits` require all of their fields. Preflight diffs every declared field against the current record, reports the ones already at their declared value, and blocks turning `sev_enabled` off, which the registry refuses once a subnet has it on.
+
+- Membership and `deploy_guestos` preflights now check the two conditions a SEV-enabled subnet imposes on every later change. A node joining such a subnet needs a chip id in its registry record, and the version the subnet runs needs guest launch measurements, and the registry only checks either one after the NNS has adopted the proposal, so an otherwise well-formed proposal traps on execution. Preflight names the node or the version that would trap, and a record it cannot read is reported as unchecked rather than as a failure.
 
 - The dry-run runs against the live network's registry records for the subnet, nodes, operators, and versions the proposal names, so a payload now executes locally instead of failing on state the local NNS never had. Every membership, deploy, and removal dry-run used to end in `Status: Failed` with `Subnet record ... not found in the registry`, which proved the payload decoded and nothing more. A proposal naming an entity the network does not have fails the dry-run with that entity named.
 
@@ -42,6 +44,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Before 
 - The dry run prints the whole summary as the local NNS stored it, with its byte count, so a heredoc body can be proofread before it goes to mainnet. `alp status` still shows the first line per proposal. A `title` shorter than 5 bytes or longer than 256, or a summary over 30000, is now rejected when the config loads.
 
 - The dry-run output says that the proposal id, proposer neuron and tally it prints come from the local NNS rather than from mainnet.
+
+### Fixed
+
+- `alp reconcile` no longer crashes on a subnet whose record carries no features at all. Reading `sev_enabled` off an absent features record panicked, which every subnet that has one hid.
 
 ## [0.4.0] - 2026-08-07
 

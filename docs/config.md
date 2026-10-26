@@ -102,7 +102,7 @@ This page documents the current development schema, ahead of the latest release.
 
 ### `membership { }`
 
-<span class="since" title="Introduced in v0.3.0">v0.3.0</span> Nested in a proposal of kind "membership": change_subnet_membership. Holds add/remove [node](#node-) blocks. Renamed from resize in v0.3.0; a config written for v0.2.0 or earlier must rename the block and its kind.
+<span class="since" title="Introduced in v0.3.0">v0.3.0</span> Nested in a proposal of kind "membership": change_subnet_membership. Holds add/remove [node](#node-) blocks. Renamed from resize in v0.3.0. A config written for v0.2.0 or earlier must rename the block and its kind. A SEV-enabled subnet admits only nodes whose registry record carries a chip_id, and execution traps on one that does not, so preflight checks every incoming node.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
@@ -112,7 +112,7 @@ This page documents the current development schema, ahead of the latest release.
 
 ### `deploy_guestos { }`
 
-<span class="since" title="Introduced in v0.1.0">v0.1.0</span> Nested in a proposal of kind "deploy_guestos": deploy_guestos_to_all_subnet_nodes.
+<span class="since" title="Introduced in v0.1.0">v0.1.0</span> Nested in a proposal of kind "deploy_guestos": deploy_guestos_to_all_subnet_nodes. A SEV-enabled subnet runs only a version whose registry record carries guest launch measurements, and execution traps on one that does not, so preflight checks the target.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|
@@ -208,7 +208,7 @@ This page documents the current development schema, ahead of the latest release.
 
 ### `features { }`
 
-<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Inside an [update_subnet](#update_subnet-) block: the subnet's feature flags. Sending it replaces the whole features record rather than merging, so all three fields are required: an omitted one would be written as false. sev_enabled must therefore restate what the subnet already has; the registry rejects a change to it.
+<span class="since" title="Introduced in v0.5.0">v0.5.0</span> Inside an [update_subnet](#update_subnet-) block: the subnet's feature flags. Sending it replaces the whole features record rather than merging, so all three fields are required: an omitted one would be written as false. sev_enabled must therefore restate what the subnet already has, since the registry refuses to turn it off.
 
 | Field | Kind | Required | Since | Description |
 |-------|------|----------|-------|-------------|

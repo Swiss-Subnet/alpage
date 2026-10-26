@@ -38,7 +38,7 @@ var kinds = []kind{
 	{
 		Name:     "membership",
 		Function: "change_subnet_membership",
-		Doc:      "Nested in a proposal of kind \"membership\": change_subnet_membership. Holds add/remove node blocks. Renamed from resize in v0.3.0; a config written for v0.2.0 or earlier must rename the block and its kind.",
+		Doc:      "Nested in a proposal of kind \"membership\": change_subnet_membership. Holds add/remove node blocks. Renamed from resize in v0.3.0. A config written for v0.2.0 or earlier must rename the block and its kind. A SEV-enabled subnet admits only nodes whose registry record carries a chip_id, and execution traps on one that does not, so preflight checks every incoming node.",
 		Since:    "v0.3.0",
 		Body:     membershipBody{},
 		Action:   MembershipProposal{},
@@ -47,7 +47,7 @@ var kinds = []kind{
 	{
 		Name:     "deploy_guestos",
 		Function: "deploy_guestos_to_all_subnet_nodes",
-		Doc:      "Nested in a proposal of kind \"deploy_guestos\": deploy_guestos_to_all_subnet_nodes.",
+		Doc:      "Nested in a proposal of kind \"deploy_guestos\": deploy_guestos_to_all_subnet_nodes. A SEV-enabled subnet runs only a version whose registry record carries guest launch measurements, and execution traps on one that does not, so preflight checks the target.",
 		Since:    "v0.1.0",
 		Body:     deployGuestosBody{},
 		Action:   DeployGuestosAction{},

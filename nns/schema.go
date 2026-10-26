@@ -89,7 +89,7 @@ var schemaNestedBlocks = []SchemaBlock{
 	},
 	{
 		Name: "features", File: "proposals.hcl",
-		Doc:   "Inside an update_subnet block: the subnet's feature flags. Sending it replaces the whole features record rather than merging, so all three fields are required: an omitted one would be written as false. sev_enabled must therefore restate what the subnet already has; the registry rejects a change to it.",
+		Doc:   "Inside an update_subnet block: the subnet's feature flags. Sending it replaces the whole features record rather than merging, so all three fields are required: an omitted one would be written as false. sev_enabled must therefore restate what the subnet already has, since the registry refuses to turn it off.",
 		Type:  subnetFeaturesBody{},
 		Since: "v0.5.0",
 	},

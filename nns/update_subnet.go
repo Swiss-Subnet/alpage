@@ -22,10 +22,10 @@ import (
 // wholesale replacement visible in the config rather than implied by it.
 //
 // Two fields the payload carries are deliberately not settings here: the
-// registry asserts subnet_type is unchanged (EXC-408) and rejects any change to
-// sev_enabled, which can only be set when the subnet is created. sev_enabled is
-// still declared, inside features, because features has to be restated in full;
-// Preflight checks that it matches what the subnet already has.
+// registry asserts subnet_type is unchanged (EXC-408) and refuses to turn
+// sev_enabled off once a subnet has it on. sev_enabled is still declared,
+// inside features, because features has to be restated in full. Preflight
+// blocks a disable and reports an enable as the live change it is.
 
 // SubnetSettings is the subset of UpdateSubnetPayload alpage exposes: the fields
 // the registry still acts on. A nil field is one the proposal does not touch.

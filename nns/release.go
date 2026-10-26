@@ -1,6 +1,7 @@
 package nns
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,9 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	registrypb "github.com/swiss-subnet/alpage/nns/pb/registry"
+	"google.golang.org/protobuf/proto"
 )
 
 // SourceExplorer marks data read from the registry explorer HTTP API rather
@@ -37,6 +41,11 @@ const SourceExplorer Source = "registry explorer"
 type ElectedVersions struct {
 	IDs    map[string]bool
 	Source Source
+	// Measured records, per version, whether its record carries guest launch
+	// measurements, which a SEV-enabled subnet requires of the version it runs.
+	// A version absent from the map is one whose record could not be decoded,
+	// so the answer is unknown rather than false.
+	Measured map[string]bool
 	// Unverified marks a set that could not be read while the caller chose to
 	// proceed anyway (AllowUnverifiedElection). Nothing can be checked against
 	// it, so the deploy is warned about rather than blocked or silently passed.
@@ -56,56 +65,73 @@ func (e ElectedVersions) Known() bool { return len(e.IDs) > 0 }
 func FetchElectedVersions(explorerBase string, versionIDs ...string) (ElectedVersions, error) {
 	base := strings.TrimRight(explorerBase, "/")
 	ids := make(map[string]bool, len(versionIDs))
+	measured := make(map[string]bool, len(versionIDs))
 	for _, v := range versionIDs {
 		if v == "" || ids[v] {
 			continue
 		}
-		ok, err := fetchVersionElected(base, v)
+		rec, err := fetchVersionRecord(base, v)
 		if err != nil {
 			return ElectedVersions{}, err
 		}
-		ids[v] = ok
+		ids[v] = rec.Elected
+		if rec.MeasuredKnown {
+			measured[v] = rec.Measured
+		}
 	}
 	if len(ids) == 0 {
 		return ElectedVersions{}, nil
 	}
-	return ElectedVersions{IDs: ids, Source: SourceExplorer}, nil
+	return ElectedVersions{IDs: ids, Measured: measured, Source: SourceExplorer}, nil
 }
 
-func fetchVersionElected(base, versionID string) (bool, error) {
+func fetchVersionRecord(base, versionID string) (versionRecord, error) {
 	client := &http.Client{Timeout: queryTimeout}
 	u := base + "/api/records/replica_version_" + url.PathEscape(versionID)
 	resp, err := client.Get(u)
 	if err != nil {
-		return false, fmt.Errorf("get replica_version_%s: %w", versionID, err)
+		return versionRecord{}, fmt.Errorf("get replica_version_%s: %w", versionID, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return false, nil
+		return versionRecord{}, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("replica_version_%s: http %d", versionID, resp.StatusCode)
+		return versionRecord{}, fmt.Errorf("replica_version_%s: http %d", versionID, resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, fmt.Errorf("read replica_version_%s: %w", versionID, err)
+		return versionRecord{}, fmt.Errorf("read replica_version_%s: %w", versionID, err)
 	}
-	return parseVersionElected(body)
+	return parseVersionRecord(body)
 }
 
 // replicaVersionRecord is one versioned entry of a replica_version_<id> key. A
 // nil Value is a deletion mutation: the version was unelected at that version.
+// Value itself is the base64 ReplicaVersionRecord protobuf.
 type replicaVersionRecord struct {
 	Version uint64  `json:"version"`
 	Value   *string `json:"value"`
 }
 
-// parseVersionElected reduces a version's record history to whether it is
-// currently elected: elected iff the highest-version entry carries a value.
-func parseVersionElected(body []byte) (bool, error) {
+// versionRecord is the current state of a replica_version_<id> key.
+type versionRecord struct {
+	Elected bool
+	// Measured reports guest launch measurements on the record, and is
+	// meaningful only when MeasuredKnown is set. An unelected version, or one
+	// whose value does not decode, leaves it unknown rather than false, since a
+	// missing measurement blocks a deploy to a SEV-enabled subnet.
+	Measured      bool
+	MeasuredKnown bool
+}
+
+// parseVersionRecord reduces a version's record history to its current state:
+// elected iff the highest-version entry carries a value, measured iff that
+// entry's protobuf carries guest_launch_measurements.
+func parseVersionRecord(body []byte) (versionRecord, error) {
 	var records []replicaVersionRecord
 	if err := json.Unmarshal(body, &records); err != nil {
-		return false, fmt.Errorf("parse replica_version record: %w", err)
+		return versionRecord{}, fmt.Errorf("parse replica_version record: %w", err)
 	}
 	var latest *replicaVersionRecord
 	for i := range records {
@@ -113,7 +139,20 @@ func parseVersionElected(body []byte) (bool, error) {
 			latest = &records[i]
 		}
 	}
-	return latest != nil && latest.Value != nil, nil
+	if latest == nil || latest.Value == nil {
+		return versionRecord{}, nil
+	}
+	rec := versionRecord{Elected: true}
+	blob, err := base64.StdEncoding.DecodeString(*latest.Value)
+	if err != nil {
+		return rec, nil
+	}
+	var decoded registrypb.ReplicaVersionRecord
+	if err := proto.Unmarshal(blob, &decoded); err != nil {
+		return rec, nil
+	}
+	rec.Measured, rec.MeasuredKnown = decoded.GetGuestLaunchMeasurements() != nil, true
+	return rec, nil
 }
 
 // Release is the human-readable identity of a GuestOS version: the dfinity/ic
